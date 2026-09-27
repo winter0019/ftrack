@@ -1,0 +1,1 @@
+<div class="ft-userbar"><span>Signed in as <strong>{{ current_user.full_name }}</strong> · {{ current_user.role }}</span>{% if current_user.role == 'Administrator' %}<a href="{{ url_for('users') }}">Official Accounts</a>{% endif %}<a href="{{ url_for('logout') }}">Logout</a></div>
