@@ -17,78 +17,218 @@ BRANCHES=["CIM","CW&HS","CDS"]
 PRIORITIES=["Normal","High","Urgent"]
 ROLES=["Administrator","Zonal Inspector","LGI Officer","Branch Official","Supporting Staff"]
 
+DATABASE_URL=os.environ.get("DATABASE_URL","").strip()
+USING_POSTGRES=bool(DATABASE_URL)
+
+if USING_POSTGRES:
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError:
+        raise RuntimeError("DATABASE_URL is set, but psycopg is not installed. Add psycopg[binary] to requirements.txt.")
+
+class DBConnection:
+    """Small compatibility wrapper so the existing FileTrack SQL can run on SQLite locally
+    and PostgreSQL on Render without changing the application workflow."""
+    def __init__(self):
+        if USING_POSTGRES:
+            self.conn=psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        else:
+            self.conn=sqlite3.connect(DB)
+            self.conn.row_factory=sqlite3.Row
+
+    def execute(self, sql, params=()):
+        if USING_POSTGRES:
+            sql=sql.replace("?", "%s")
+        return self.conn.execute(sql, params)
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+    def executescript(self, sql):
+        if USING_POSTGRES:
+            # PostgreSQL supports multiple statements in a single execute.
+            self.conn.execute(sql)
+        else:
+            self.conn.executescript(sql)
+
 def db():
-    c=sqlite3.connect(DB)
-    c.row_factory=sqlite3.Row
-    return c
+    return DBConnection()
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def init_db():
     c=db()
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS files(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT UNIQUE NOT NULL,
-      title TEXT NOT NULL,
-      reference_no TEXT,
-      lga TEXT NOT NULL,
-      lgi_name TEXT,
-      received_by TEXT NOT NULL,
-      received_at TEXT NOT NULL,
-      priority TEXT DEFAULT 'Normal',
-      description TEXT,
-      attachment TEXT,
-      status TEXT DEFAULT 'Received',
-      current_location TEXT DEFAULT 'Katsina Zonal Office',
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS movements(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT NOT NULL,
-      from_location TEXT NOT NULL,
-      to_location TEXT NOT NULL,
-      forwarded_by TEXT,
-      receiving_officer TEXT,
-      action TEXT,
-      forwarded_at TEXT NOT NULL,
-      acknowledged_at TEXT,
-      status TEXT DEFAULT 'Forwarded',
-      remarks TEXT
-    );
-    CREATE TABLE IF NOT EXISTS audit_logs(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT NOT NULL,
-      action TEXT NOT NULL,
-      official TEXT,
-      details TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS users(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      full_name TEXT NOT NULL,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL,
-      office TEXT,
-      lga TEXT,
-      active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL
-    );
-    """)
-    # Phase 2 delivery-confirmation fields. These migrations preserve existing filetrack.db data.
-    for statement in [
-        "ALTER TABLE movements ADD COLUMN submitted_by TEXT",
-        "ALTER TABLE movements ADD COLUMN submitted_at TEXT",
-    ]:
-        try:
-            c.execute(statement)
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e).lower():
-                raise
+    if USING_POSTGRES:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS files(
+          id SERIAL PRIMARY KEY,
+          file_id TEXT UNIQUE NOT NULL,
+          title TEXT NOT NULL,
+          reference_no TEXT,
+          lga TEXT NOT NULL,
+          lgi_name TEXT,
+          received_by TEXT NOT NULL,
+          received_at TEXT NOT NULL,
+          priority TEXT DEFAULT 'Normal',
+          description TEXT,
+          attachment TEXT,
+          status TEXT DEFAULT 'Received',
+          current_location TEXT DEFAULT 'Katsina Zonal Office',
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS movements(
+          id SERIAL PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          from_location TEXT NOT NULL,
+          to_location TEXT NOT NULL,
+          forwarded_by TEXT,
+          receiving_officer TEXT,
+          action TEXT,
+          forwarded_at TEXT NOT NULL,
+          acknowledged_at TEXT,
+          status TEXT DEFAULT 'Forwarded',
+          remarks TEXT,
+          submitted_by TEXT,
+          submitted_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS audit_logs(
+          id SERIAL PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          official TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS users(
+          id SERIAL PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          username TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL,
+          office TEXT,
+          lga TEXT,
+          active INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL
+        );
+        """)
+    else:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS files(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          file_id TEXT UNIQUE NOT NULL,
+          title TEXT NOT NULL,
+          reference_no TEXT,
+          lga TEXT NOT NULL,
+          lgi_name TEXT,
+          received_by TEXT NOT NULL,
+          received_at TEXT NOT NULL,
+          priority TEXT DEFAULT 'Normal',
+          description TEXT,
+          attachment TEXT,
+          status TEXT DEFAULT 'Received',
+          current_location TEXT DEFAULT 'Katsina Zonal Office',
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS movements(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          file_id TEXT NOT NULL,
+          from_location TEXT NOT NULL,
+          to_location TEXT NOT NULL,
+          forwarded_by TEXT,
+          receiving_officer TEXT,
+          action TEXT,
+          forwarded_at TEXT NOT NULL,
+          acknowledged_at TEXT,
+          status TEXT DEFAULT 'Forwarded',
+          remarks TEXT,
+          submitted_by TEXT,
+          submitted_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS audit_logs(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          file_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          official TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS users(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          full_name TEXT NOT NULL,
+          username TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL,
+          office TEXT,
+          lga TEXT,
+          active INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL
+        );
+        """)
+        # Phase 2 delivery-confirmation fields for existing local SQLite databases.
+        for statement in [
+            "ALTER TABLE movements ADD COLUMN submitted_by TEXT",
+            "ALTER TABLE movements ADD COLUMN submitted_at TEXT",
+        ]:
+            try:
+                c.execute(statement)
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
     c.commit()
     c.close()
+
+def migrate_bundled_sqlite_to_postgres_if_empty():
+    """On the first Render startup, copy the bundled SQLite records into the new Postgres DB.
+    This is deliberately one-time: it only runs when the Postgres users/files tables are empty.
+    """
+    if not USING_POSTGRES or not os.path.exists(DB):
+        return
+    c=db()
+    counts={
+        "users": c.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"],
+        "files": c.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"],
+    }
+    c.close()
+    if counts["users"] or counts["files"]:
+        return
+
+    src=sqlite3.connect(DB)
+    src.row_factory=sqlite3.Row
+    dst=db()
+    try:
+        for table, columns in [
+            ("users", ["id","full_name","username","password_hash","role","office","lga","active","created_at"]),
+            ("files", ["id","file_id","title","reference_no","lga","lgi_name","received_by","received_at","priority","description","attachment","status","current_location","created_at"]),
+            ("movements", ["id","file_id","from_location","to_location","forwarded_by","receiving_officer","action","forwarded_at","acknowledged_at","status","remarks","submitted_by","submitted_at"]),
+            ("audit_logs", ["id","file_id","action","official","details","created_at"]),
+        ]:
+            try:
+                rows=src.execute(f"SELECT {', '.join(columns)} FROM {table} ORDER BY id").fetchall()
+            except sqlite3.OperationalError:
+                # Older SQLite files may not have the new delivery columns.
+                if table=="movements":
+                    columns=["id","file_id","from_location","to_location","forwarded_by","receiving_officer","action","forwarded_at","acknowledged_at","status","remarks"]
+                    rows=src.execute(f"SELECT {', '.join(columns)} FROM {table} ORDER BY id").fetchall()
+                else:
+                    raise
+            if not rows:
+                continue
+            marks=", ".join(["?"]*len(columns))
+            # Use the wrapper so ? becomes %s for Postgres.
+            sql=f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({marks}) ON CONFLICT DO NOTHING"
+            for row in rows:
+                dst.execute(sql, tuple(row[c] for c in columns))
+        # Keep PostgreSQL SERIAL sequences ahead of the imported IDs.
+        for table in ("users","files","movements","audit_logs"):
+            dst.execute(f"SELECT setval(pg_get_serial_sequence('{table}','id'), COALESCE((SELECT MAX(id) FROM {table}), 1), true)")
+        dst.commit()
+    finally:
+        dst.close(); src.close()
 
 def user_count():
     c=db()
@@ -269,8 +409,11 @@ def users():
                      role,office,lga,now()))
                 c.commit()
                 flash(f"{full_name} account created successfully.","success")
-            except sqlite3.IntegrityError:
-                flash("That username already exists.","error")
+            except Exception as e:
+                if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                    flash("That username already exists.","error")
+                else:
+                    raise
             finally:
                 c.close()
         return redirect(url_for("users"))
@@ -295,72 +438,25 @@ def toggle_user(user_id):
 @app.route("/")
 @login_required
 def dashboard():
-    u=current_user()
-    role=u["role"]
     c=db()
-
-    # Administrator / Zonal Inspector: full zonal operational picture.
-    if role in ("Administrator", "Zonal Inspector"):
-        total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-        received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
-        forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
-        submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
-        returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
-        stats={"Total":total,"Received":received,"Forwarded":forwarded,
-               "Submitted":submitted,"Returned":returned}
-        branch_counts={}
-        for branch in BRANCHES:
-            branch_counts[branch]=c.execute(
-                "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
-        branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
-        recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
-
-    # Supporting Staff: show registry work and the physical-delivery queue,
-    # rather than the complete management dashboard.
-    elif role == "Supporting Staff":
-        name=u["full_name"]
-        surname=name.strip().split()[-1] if name.strip() else ""
-        registered=c.execute(
-            "SELECT COUNT(*) FROM files WHERE lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ?",
-            (name, u["username"], f"%{surname.lower()}%")
-        ).fetchone()[0]
-        review=c.execute(
-            "SELECT COUNT(*) FROM files WHERE status='Received' AND (lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ?)",
-            (name, u["username"], f"%{surname.lower()}%")
-        ).fetchone()[0]
-        delivery=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
-        my_submitted=c.execute("SELECT COUNT(*) FROM movements WHERE submitted_by=?",(name,)).fetchone()[0]
-        stats={"registered":registered,"review":review,"delivery":delivery,"my_submitted":my_submitted}
-        branches=[]
-        recent=c.execute(
-            "SELECT * FROM files WHERE lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ? ORDER BY id DESC LIMIT 8",
-            (name, u["username"], f"%{surname.lower()}%")
-        ).fetchall()
-
-    # LGI Officer: only the officer's assigned LGA is relevant.
-    elif role == "LGI Officer":
-        lga=(u["lga"] or "").strip()
-        total=c.execute("SELECT COUNT(*) FROM files WHERE lga=?",(lga,)).fetchone()[0]
-        received=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Received'",(lga,)).fetchone()[0]
-        forwarded=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Forwarded'",(lga,)).fetchone()[0]
-        submitted=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Submitted'",(lga,)).fetchone()[0]
-        stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted}
-        branches=[]
-        recent=c.execute("SELECT * FROM files WHERE lga=? ORDER BY id DESC LIMIT 8",(lga,)).fetchall()
-
-    # Branch Official: office should contain CIM, CW&HS or CDS.
-    else:
-        branch=(u["office"] or "").strip()
-        incoming=c.execute("SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
-        pending=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Forwarded'",(branch,)).fetchone()[0]
-        submitted=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Submitted'",(branch,)).fetchone()[0]
-        returned=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Returned'",(branch,)).fetchone()[0]
-        stats={"incoming":incoming,"pending":pending,"submitted":submitted,"returned":returned}
-        branches=[]
-        recent=c.execute("SELECT * FROM files WHERE current_location=? ORDER BY id DESC LIMIT 8",(branch,)).fetchall()
-
+    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
+    forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
+    submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
+    acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()[0]
+    returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
+    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,
+           "returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,
+           "Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
+    branch_counts={}
+    for branch in BRANCHES:
+        branch_counts[branch]=c.execute(
+            "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
+    branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
+    recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
     c.close()
-    return render_template("dashboard.html",stats=stats,branches=branches,recent=recent)
+    return render_template("dashboard.html",stats=stats,branches=branches,
+                           branch_counts=branch_counts,recent=recent)
 
 @app.route("/files")
 @login_required
@@ -500,6 +596,7 @@ def download(name):
     return send_from_directory(UPLOADS,name,as_attachment=True)
 
 init_db()
+migrate_bundled_sqlite_to_postgres_if_empty()
 
 if __name__=="__main__":
     app.run(debug=True)
