@@ -295,25 +295,72 @@ def toggle_user(user_id):
 @app.route("/")
 @login_required
 def dashboard():
+    u=current_user()
+    role=u["role"]
     c=db()
-    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
-    forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
-    submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
-    acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()[0]
-    returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
-    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,
-           "returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,
-           "Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
-    branch_counts={}
-    for branch in BRANCHES:
-        branch_counts[branch]=c.execute(
-            "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
-    branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
-    recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+
+    # Administrator / Zonal Inspector: full zonal operational picture.
+    if role in ("Administrator", "Zonal Inspector"):
+        total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
+        forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
+        submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
+        returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
+        stats={"Total":total,"Received":received,"Forwarded":forwarded,
+               "Submitted":submitted,"Returned":returned}
+        branch_counts={}
+        for branch in BRANCHES:
+            branch_counts[branch]=c.execute(
+                "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
+        branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
+        recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+
+    # Supporting Staff: show registry work and the physical-delivery queue,
+    # rather than the complete management dashboard.
+    elif role == "Supporting Staff":
+        name=u["full_name"]
+        surname=name.strip().split()[-1] if name.strip() else ""
+        registered=c.execute(
+            "SELECT COUNT(*) FROM files WHERE lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ?",
+            (name, u["username"], f"%{surname.lower()}%")
+        ).fetchone()[0]
+        review=c.execute(
+            "SELECT COUNT(*) FROM files WHERE status='Received' AND (lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ?)",
+            (name, u["username"], f"%{surname.lower()}%")
+        ).fetchone()[0]
+        delivery=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
+        my_submitted=c.execute("SELECT COUNT(*) FROM movements WHERE submitted_by=?",(name,)).fetchone()[0]
+        stats={"registered":registered,"review":review,"delivery":delivery,"my_submitted":my_submitted}
+        branches=[]
+        recent=c.execute(
+            "SELECT * FROM files WHERE lower(received_by)=lower(?) OR lower(received_by)=lower(?) OR lower(received_by) LIKE ? ORDER BY id DESC LIMIT 8",
+            (name, u["username"], f"%{surname.lower()}%")
+        ).fetchall()
+
+    # LGI Officer: only the officer's assigned LGA is relevant.
+    elif role == "LGI Officer":
+        lga=(u["lga"] or "").strip()
+        total=c.execute("SELECT COUNT(*) FROM files WHERE lga=?",(lga,)).fetchone()[0]
+        received=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Received'",(lga,)).fetchone()[0]
+        forwarded=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Forwarded'",(lga,)).fetchone()[0]
+        submitted=c.execute("SELECT COUNT(*) FROM files WHERE lga=? AND status='Submitted'",(lga,)).fetchone()[0]
+        stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted}
+        branches=[]
+        recent=c.execute("SELECT * FROM files WHERE lga=? ORDER BY id DESC LIMIT 8",(lga,)).fetchall()
+
+    # Branch Official: office should contain CIM, CW&HS or CDS.
+    else:
+        branch=(u["office"] or "").strip()
+        incoming=c.execute("SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
+        pending=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Forwarded'",(branch,)).fetchone()[0]
+        submitted=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Submitted'",(branch,)).fetchone()[0]
+        returned=c.execute("SELECT COUNT(*) FROM files WHERE current_location=? AND status='Returned'",(branch,)).fetchone()[0]
+        stats={"incoming":incoming,"pending":pending,"submitted":submitted,"returned":returned}
+        branches=[]
+        recent=c.execute("SELECT * FROM files WHERE current_location=? ORDER BY id DESC LIMIT 8",(branch,)).fetchall()
+
     c.close()
-    return render_template("dashboard.html",stats=stats,branches=branches,
-                           branch_counts=branch_counts,recent=recent)
+    return render_template("dashboard.html",stats=stats,branches=branches,recent=recent)
 
 @app.route("/files")
 @login_required
