@@ -19,8 +19,10 @@
   <button class="menu" aria-label="Open navigation" onclick="document.body.classList.toggle('open')">☰</button>
   <nav>
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
-    <a href="{{ url_for('files_page') }}">File Register</a>
-    <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
+    {% if current_user and current_user['role'] != 'LGI Officer' %}<a href="{{ url_for('files_page') }}">File Register</a>{% endif %}
+    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','Supporting Staff') %}<a class="cta" href="{{ url_for('receive') }}">＋ {% if current_user['role']=='Supporting Staff' %}Register File{% else %}Receive File{% endif %}</a>{% endif %}
+    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','Supporting Staff') %}<a href="{{ url_for('inspections') }}">Inspections</a>{% endif %}
+    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','LGI Officer') %}<a href="{{ url_for('reports') }}">Reports</a>{% endif %}
     {% if current_user and current_user['role']=='Administrator' %}<a class="admin-link" href="{{ url_for('users') }}">Officials</a>{% endif %}
     {% if current_user %}
     <div class="account">
