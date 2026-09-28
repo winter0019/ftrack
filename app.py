@@ -17,218 +17,88 @@ BRANCHES=["CIM","CW&HS","CDS"]
 PRIORITIES=["Normal","High","Urgent"]
 ROLES=["Administrator","Zonal Inspector","LGI Officer","Branch Official","Supporting Staff"]
 
-DATABASE_URL=os.environ.get("DATABASE_URL","").strip()
-USING_POSTGRES=bool(DATABASE_URL)
-
-if USING_POSTGRES:
-    try:
-        import psycopg
-        from psycopg.rows import dict_row
-    except ImportError:
-        raise RuntimeError("DATABASE_URL is set, but psycopg is not installed. Add psycopg[binary] to requirements.txt.")
-
-class DBConnection:
-    """Small compatibility wrapper so the existing FileTrack SQL can run on SQLite locally
-    and PostgreSQL on Render without changing the application workflow."""
-    def __init__(self):
-        if USING_POSTGRES:
-            self.conn=psycopg.connect(DATABASE_URL, row_factory=dict_row)
-        else:
-            self.conn=sqlite3.connect(DB)
-            self.conn.row_factory=sqlite3.Row
-
-    def execute(self, sql, params=()):
-        if USING_POSTGRES:
-            sql=sql.replace("?", "%s")
-        return self.conn.execute(sql, params)
-
-    def commit(self):
-        self.conn.commit()
-
-    def close(self):
-        self.conn.close()
-
-    def executescript(self, sql):
-        if USING_POSTGRES:
-            # PostgreSQL supports multiple statements in a single execute.
-            self.conn.execute(sql)
-        else:
-            self.conn.executescript(sql)
-
 def db():
-    return DBConnection()
+    c=sqlite3.connect(DB)
+    c.row_factory=sqlite3.Row
+    return c
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def init_db():
     c=db()
-    if USING_POSTGRES:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS files(
-          id SERIAL PRIMARY KEY,
-          file_id TEXT UNIQUE NOT NULL,
-          title TEXT NOT NULL,
-          reference_no TEXT,
-          lga TEXT NOT NULL,
-          lgi_name TEXT,
-          received_by TEXT NOT NULL,
-          received_at TEXT NOT NULL,
-          priority TEXT DEFAULT 'Normal',
-          description TEXT,
-          attachment TEXT,
-          status TEXT DEFAULT 'Received',
-          current_location TEXT DEFAULT 'Katsina Zonal Office',
-          created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS movements(
-          id SERIAL PRIMARY KEY,
-          file_id TEXT NOT NULL,
-          from_location TEXT NOT NULL,
-          to_location TEXT NOT NULL,
-          forwarded_by TEXT,
-          receiving_officer TEXT,
-          action TEXT,
-          forwarded_at TEXT NOT NULL,
-          acknowledged_at TEXT,
-          status TEXT DEFAULT 'Forwarded',
-          remarks TEXT,
-          submitted_by TEXT,
-          submitted_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS audit_logs(
-          id SERIAL PRIMARY KEY,
-          file_id TEXT NOT NULL,
-          action TEXT NOT NULL,
-          official TEXT,
-          details TEXT,
-          created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS users(
-          id SERIAL PRIMARY KEY,
-          full_name TEXT NOT NULL,
-          username TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          role TEXT NOT NULL,
-          office TEXT,
-          lga TEXT,
-          active INTEGER DEFAULT 1,
-          created_at TEXT NOT NULL
-        );
-        """)
-    else:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS files(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          file_id TEXT UNIQUE NOT NULL,
-          title TEXT NOT NULL,
-          reference_no TEXT,
-          lga TEXT NOT NULL,
-          lgi_name TEXT,
-          received_by TEXT NOT NULL,
-          received_at TEXT NOT NULL,
-          priority TEXT DEFAULT 'Normal',
-          description TEXT,
-          attachment TEXT,
-          status TEXT DEFAULT 'Received',
-          current_location TEXT DEFAULT 'Katsina Zonal Office',
-          created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS movements(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          file_id TEXT NOT NULL,
-          from_location TEXT NOT NULL,
-          to_location TEXT NOT NULL,
-          forwarded_by TEXT,
-          receiving_officer TEXT,
-          action TEXT,
-          forwarded_at TEXT NOT NULL,
-          acknowledged_at TEXT,
-          status TEXT DEFAULT 'Forwarded',
-          remarks TEXT,
-          submitted_by TEXT,
-          submitted_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS audit_logs(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          file_id TEXT NOT NULL,
-          action TEXT NOT NULL,
-          official TEXT,
-          details TEXT,
-          created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS users(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          full_name TEXT NOT NULL,
-          username TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          role TEXT NOT NULL,
-          office TEXT,
-          lga TEXT,
-          active INTEGER DEFAULT 1,
-          created_at TEXT NOT NULL
-        );
-        """)
-        # Phase 2 delivery-confirmation fields for existing local SQLite databases.
-        for statement in [
-            "ALTER TABLE movements ADD COLUMN submitted_by TEXT",
-            "ALTER TABLE movements ADD COLUMN submitted_at TEXT",
-        ]:
-            try:
-                c.execute(statement)
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    raise
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS files(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      reference_no TEXT,
+      lga TEXT NOT NULL,
+      lgi_name TEXT,
+      received_by TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      priority TEXT DEFAULT 'Normal',
+      description TEXT,
+      attachment TEXT,
+      status TEXT DEFAULT 'Received',
+      current_location TEXT DEFAULT 'Katsina Zonal Office',
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS movements(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT NOT NULL,
+      from_location TEXT NOT NULL,
+      to_location TEXT NOT NULL,
+      forwarded_by TEXT,
+      receiving_officer TEXT,
+      action TEXT,
+      forwarded_at TEXT NOT NULL,
+      acknowledged_at TEXT,
+      status TEXT DEFAULT 'Forwarded',
+      remarks TEXT
+    );
+    CREATE TABLE IF NOT EXISTS audit_logs(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      official TEXT,
+      details TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS users(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name TEXT NOT NULL,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL,
+      office TEXT,
+      lga TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS inspections(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, inspection_id TEXT UNIQUE NOT NULL, lga TEXT NOT NULL,
+      ppa_employer TEXT, corps_member TEXT, subject TEXT NOT NULL, findings TEXT NOT NULL,
+      recommendations TEXT, inspected_by TEXT NOT NULL, inspected_at TEXT NOT NULL, status TEXT DEFAULT 'Submitted to ZI'
+    );
+    CREATE TABLE IF NOT EXISTS reports(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, report_id TEXT UNIQUE NOT NULL, lga TEXT NOT NULL,
+      report_type TEXT NOT NULL, ppa_employer TEXT, corps_member TEXT, subject TEXT NOT NULL,
+      report_body TEXT NOT NULL, issued_by TEXT NOT NULL, issued_at TEXT NOT NULL, status TEXT DEFAULT 'Issued'
+    );
+    """)
+    # Phase 2 delivery-confirmation fields. These migrations preserve existing filetrack.db data.
+    for statement in [
+        "ALTER TABLE movements ADD COLUMN submitted_by TEXT",
+        "ALTER TABLE movements ADD COLUMN submitted_at TEXT",
+    ]:
+        try:
+            c.execute(statement)
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
     c.commit()
     c.close()
-
-def migrate_bundled_sqlite_to_postgres_if_empty():
-    """On the first Render startup, copy the bundled SQLite records into the new Postgres DB.
-    This is deliberately one-time: it only runs when the Postgres users/files tables are empty.
-    """
-    if not USING_POSTGRES or not os.path.exists(DB):
-        return
-    c=db()
-    counts={
-        "users": c.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"],
-        "files": c.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"],
-    }
-    c.close()
-    if counts["users"] or counts["files"]:
-        return
-
-    src=sqlite3.connect(DB)
-    src.row_factory=sqlite3.Row
-    dst=db()
-    try:
-        for table, columns in [
-            ("users", ["id","full_name","username","password_hash","role","office","lga","active","created_at"]),
-            ("files", ["id","file_id","title","reference_no","lga","lgi_name","received_by","received_at","priority","description","attachment","status","current_location","created_at"]),
-            ("movements", ["id","file_id","from_location","to_location","forwarded_by","receiving_officer","action","forwarded_at","acknowledged_at","status","remarks","submitted_by","submitted_at"]),
-            ("audit_logs", ["id","file_id","action","official","details","created_at"]),
-        ]:
-            try:
-                rows=src.execute(f"SELECT {', '.join(columns)} FROM {table} ORDER BY id").fetchall()
-            except sqlite3.OperationalError:
-                # Older SQLite files may not have the new delivery columns.
-                if table=="movements":
-                    columns=["id","file_id","from_location","to_location","forwarded_by","receiving_officer","action","forwarded_at","acknowledged_at","status","remarks"]
-                    rows=src.execute(f"SELECT {', '.join(columns)} FROM {table} ORDER BY id").fetchall()
-                else:
-                    raise
-            if not rows:
-                continue
-            marks=", ".join(["?"]*len(columns))
-            # Use the wrapper so ? becomes %s for Postgres.
-            sql=f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({marks}) ON CONFLICT DO NOTHING"
-            for row in rows:
-                dst.execute(sql, tuple(row[c] for c in columns))
-        # Keep PostgreSQL SERIAL sequences ahead of the imported IDs.
-        for table in ("users","files","movements","audit_logs"):
-            dst.execute(f"SELECT setval(pg_get_serial_sequence('{table}','id'), COALESCE((SELECT MAX(id) FROM {table}), 1), true)")
-        dst.commit()
-    finally:
-        dst.close(); src.close()
 
 def user_count():
     c=db()
@@ -301,6 +171,16 @@ def supporting_staff_required(view):
     return wrapped
 
 
+def lgi_report_only(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] == "LGI Officer":
+            flash("LGI Officers have report-only access. Reports are issued by the Zonal Inspector for their assigned LGA.","error")
+            return redirect(url_for("reports"))
+        return view(*args,**kwargs)
+    return wrapped
+
 def registry_required(view):
     @wraps(view)
     def wrapped(*args,**kwargs):
@@ -328,6 +208,30 @@ def next_file_id():
     n=c.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"]
     c.close()
     return f"KZO-FM-{datetime.now().year}-{n+1:04d}"
+
+def next_inspection_id():
+    c=db(); n=c.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]; c.close(); return f"KZO-INSP-{datetime.now().year}-{n+1:04d}"
+
+def next_report_id():
+    c=db(); n=c.execute("SELECT COUNT(*) FROM reports").fetchone()[0]; c.close(); return f"KZO-RPT-{datetime.now().year}-{n+1:04d}"
+
+def inspection_required(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] != "Supporting Staff":
+            flash("Inspection is assigned to Supporting Staff. LGI Officers receive Zonal reports instead.","error"); return redirect(url_for("dashboard"))
+        return view(*args,**kwargs)
+    return wrapped
+
+def report_management_required(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] not in ("Administrator", "Zonal Inspector"):
+            flash("Only the Administrator or Zonal Inspector may issue reports to LGI Officers.","error"); return redirect(url_for("dashboard"))
+        return view(*args,**kwargs)
+    return wrapped
 
 @app.route("/login",methods=["GET","POST"])
 def login():
@@ -409,11 +313,8 @@ def users():
                      role,office,lga,now()))
                 c.commit()
                 flash(f"{full_name} account created successfully.","success")
-            except Exception as e:
-                if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                    flash("That username already exists.","error")
-                else:
-                    raise
+            except sqlite3.IntegrityError:
+                flash("That username already exists.","error")
             finally:
                 c.close()
         return redirect(url_for("users"))
@@ -438,28 +339,18 @@ def toggle_user(user_id):
 @app.route("/")
 @login_required
 def dashboard():
-    c=db()
-    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
-    forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
-    submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
-    acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()[0]
-    returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
-    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,
-           "returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,
-           "Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
-    branch_counts={}
-    for branch in BRANCHES:
-        branch_counts[branch]=c.execute(
-            "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
-    branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
-    recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
-    c.close()
-    return render_template("dashboard.html",stats=stats,branches=branches,
-                           branch_counts=branch_counts,recent=recent)
+    u=current_user(); c=db()
+    if u["role"] == "LGI Officer":
+        reports=c.execute("SELECT * FROM reports WHERE lga=? ORDER BY id DESC LIMIT 20",(u["lga"],)).fetchall(); c.close()
+        return render_template("dashboard.html",lgi_reports=reports)
+    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]; received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]; forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]; submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]; acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()[0]; returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
+    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,"returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,"Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
+    branch_counts={b:c.execute("SELECT COUNT(*) FROM files WHERE current_location=?",(b,)).fetchone()[0] for b in BRANCHES}; branches=[(b,branch_counts[b]) for b in BRANCHES]; recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall(); inspection_count=c.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]; pending_inspections=c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()[0]; report_count=c.execute("SELECT COUNT(*) FROM reports").fetchone()[0]; c.close()
+    return render_template("dashboard.html",stats=stats,branches=branches,branch_counts=branch_counts,recent=recent,inspection_count=inspection_count,pending_inspections=pending_inspections,report_count=report_count)
 
 @app.route("/files")
 @login_required
+@lgi_report_only
 def files_page():
     q=request.args.get("q","").strip()
     status=request.args.get("status","").strip()
@@ -513,6 +404,7 @@ def receive():
 
 @app.route("/file/<file_id>")
 @login_required
+@lgi_report_only
 def detail(file_id):
     c=db()
     f=c.execute("SELECT * FROM files WHERE file_id=?",(file_id,)).fetchone()
@@ -590,13 +482,49 @@ def return_file(file_id):
     flash("File returned to Zonal Office.","success")
     return redirect(url_for("detail",file_id=file_id))
 
+@app.route("/inspections")
+@login_required
+def inspections():
+    u=current_user(); c=db()
+    if u["role"] == "Supporting Staff": rows=c.execute("SELECT * FROM inspections WHERE inspected_by=? ORDER BY id DESC",(u["full_name"],)).fetchall()
+    elif u["role"] in ("Administrator", "Zonal Inspector"): rows=c.execute("SELECT * FROM inspections ORDER BY id DESC").fetchall()
+    else: c.close(); flash("Inspection access is not available to this role.","error"); return redirect(url_for("dashboard"))
+    c.close(); return render_template("inspections.html",rows=rows)
+
+@app.route("/inspection/new",methods=["GET","POST"])
+@inspection_required
+def new_inspection():
+    if request.method=="POST":
+        subject=request.form.get("subject","").strip(); findings=request.form.get("findings","").strip()
+        if not subject or not findings: flash("Inspection subject and findings are required.","error"); return redirect(url_for("new_inspection"))
+        t=now(); iid=next_inspection_id(); u=current_user(); c=db(); c.execute("INSERT INTO inspections (inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",(iid,request.form.get("lga"),request.form.get("ppa_employer"),request.form.get("corps_member"),subject,findings,request.form.get("recommendations"),u["full_name"],t,"Submitted to ZI")); c.commit(); c.close(); flash(f"{iid} inspection submitted to the Zonal Inspector.","success"); return redirect(url_for("inspections"))
+    return render_template("inspection_form.html",lgas=LGAS)
+
+@app.route("/reports")
+@login_required
+def reports():
+    u=current_user(); c=db()
+    if u["role"] == "LGI Officer": rows=c.execute("SELECT * FROM reports WHERE lga=? ORDER BY id DESC",(u["lga"],)).fetchall()
+    elif u["role"] in ("Administrator", "Zonal Inspector"): rows=c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+    else: c.close(); flash("Reports are not available to this role.","error"); return redirect(url_for("dashboard"))
+    c.close(); return render_template("reports.html",rows=rows,report_only=(u["role"]=="LGI Officer"))
+
+@app.route("/report/new",methods=["GET","POST"])
+@report_management_required
+def new_report():
+    if request.method=="POST":
+        subject=request.form.get("subject","").strip(); body=request.form.get("report_body","").strip(); lga=request.form.get("lga","").strip()
+        if not subject or not body or lga not in LGAS: flash("LGA, report subject and report content are required.","error"); return redirect(url_for("new_report"))
+        t=now(); rid=next_report_id(); u=current_user(); c=db(); c.execute("INSERT INTO reports (report_id,lga,report_type,ppa_employer,corps_member,subject,report_body,issued_by,issued_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",(rid,lga,request.form.get("report_type","General LGA Report"),request.form.get("ppa_employer"),request.form.get("corps_member"),subject,body,u["full_name"],t,"Issued")); c.commit(); c.close(); flash(f"{rid} issued to {lga} LGI.","success"); return redirect(url_for("reports"))
+    return render_template("report_form.html",lgas=LGAS)
+
 @app.route("/download/<name>")
 @login_required
+@lgi_report_only
 def download(name):
     return send_from_directory(UPLOADS,name,as_attachment=True)
 
 init_db()
-migrate_bundled_sqlite_to_postgres_if_empty()
 
 if __name__=="__main__":
     app.run(debug=True)

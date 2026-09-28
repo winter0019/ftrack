@@ -1,81 +1,19 @@
-{% extends "base.html" %}
-{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}
-{% block content %}
-{% set role = current_user['role'] %}
-
-{% if role in ['Administrator', 'Zonal Inspector'] %}
-<div class="head">
-  <div><small>OPERATIONS CONTROL</small><h1>File Movement Dashboard</h1><p>Monitor, review and control documents received from LGIs and their movement to the State Secretariat.</p></div>
-  <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
-</div>
-<div class="stats">
-  {% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}
-  <div class="stat"><small>{{ k }}</small><strong>{{ stats.get(k,0) }}</strong></div>
-  {% endfor %}
-</div>
-<div class="section">
-  <h2>Zonal Review & Delivery Control</h2>
-  <div class="branches">
-    <a href="{{ url_for('files_page',status='Received',branch='Katsina Zonal Office') }}"><b>Awaiting Zonal Review</b><span>{{ stats.get('Received',0) }} file{{ '' if stats.get('Received',0)==1 else 's' }}</span>→</a>
-    <a href="{{ url_for('files_page',status='Forwarded') }}"><b>Awaiting Physical Submission</b><span>{{ stats.get('Forwarded',0) }} file{{ '' if stats.get('Forwarded',0)==1 else 's' }}</span>→</a>
-    <a href="{{ url_for('files_page',status='Submitted') }}"><b>Physical Submission Confirmed</b><span>{{ stats.get('Submitted',0) }} file{{ '' if stats.get('Submitted',0)==1 else 's' }}</span>→</a>
-  </div>
-</div>
-<div class="section">
-  <h2>State Secretariat Branches</h2>
-  <div class="branches">
-    {% for b,n in branches %}<a href="{{ url_for('files_page',branch=b) }}"><b>{{ b }}</b><span>{{ n }} file{{ '' if n==1 else 's' }}</span>→</a>{% endfor %}
-  </div>
-</div>
-<div class="section"><h2>Recent File Movements</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td></tr>{% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}</table></div></div>
-
-{% elif role == 'Supporting Staff' %}
-<div class="head">
-  <div><small>REGISTRY & DELIVERY CONTROL</small><h1>Supporting Staff Dashboard</h1><p>Register incoming LGI files, monitor their review status and confirm physical delivery after forwarding.</p></div>
-  <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
-</div>
-<div class="stats">
-  <div class="stat"><small>Files Registered</small><strong>{{ stats.get('registered',0) }}</strong></div>
-  <div class="stat"><small>Awaiting Zonal Review</small><strong>{{ stats.get('review',0) }}</strong></div>
-  <div class="stat"><small>Awaiting Physical Submission</small><strong>{{ stats.get('delivery',0) }}</strong></div>
-  <div class="stat"><small>My Submissions</small><strong>{{ stats.get('my_submitted',0) }}</strong></div>
-</div>
-<div class="section">
-  <h2>My Registry & Delivery Queue</h2>
-  <div class="branches">
-    <a href="{{ url_for('files_page',status='Received',branch='Katsina Zonal Office') }}"><b>Awaiting Zonal Review</b><span>{{ stats.get('review',0) }}</span>→</a>
-    <a href="{{ url_for('files_page',status='Forwarded') }}"><b>Physical Delivery Queue</b><span>{{ stats.get('delivery',0) }}</span>→</a>
-    <a href="{{ url_for('files_page',status='Submitted') }}"><b>Submitted Files</b><span>{{ stats.get('my_submitted',0) }}</span>→</a>
-  </div>
-</div>
-<div class="section"><h2>My Registered Files</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td></tr>{% else %}<tr><td colspan="5">You have not registered any files yet.</td></tr>{% endfor %}</table></div></div>
-<div class="card role-note"><strong>Your responsibility</strong><p>Register physical files received from LGIs. After the Zonal Inspector forwards a file, take the physical file to the assigned Secretariat branch and confirm the submission in FileTrack.</p></div>
-
-{% elif role == 'LGI Officer' %}
-<div class="head">
-  <div><small>LGI FILE SUBMISSION</small><h1>LGI Dashboard</h1><p>Track files originating from <strong>{{ current_user['lga'] or 'your assigned LGA' }}</strong> and monitor their movement through the Zonal Office.</p></div>
-</div>
-<div class="stats">
-  <div class="stat"><small>My LGA Files</small><strong>{{ stats.get('total',0) }}</strong></div>
-  <div class="stat"><small>At Zonal Office</small><strong>{{ stats.get('received',0) }}</strong></div>
-  <div class="stat"><small>Forwarded</small><strong>{{ stats.get('forwarded',0) }}</strong></div>
-  <div class="stat"><small>Submitted to Branch</small><strong>{{ stats.get('submitted',0) }}</strong></div>
-</div>
-<div class="section"><h2>My LGA File Register</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Location</th><th>Status</th><th>Received</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['current_location'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td><td>{{ r['received_at'] }}</td></tr>{% else %}<tr><td colspan="5">No files have been registered for your LGA.</td></tr>{% endfor %}</table></div></div>
-<div class="card role-note"><strong>LGI view</strong><p>This dashboard is limited to files from your assigned LGA. Incoming files are registered at the Zonal Office by the authorised registry/supporting staff.</p></div>
-
-{% elif role == 'Branch Official' %}
-{% set branch_name = current_user['office'] or 'Assigned Secretariat Branch' %}
-<div class="head">
-  <div><small>SECRETARIAT BRANCH RECEIPT</small><h1>Branch Dashboard</h1><p>Monitor files forwarded to <strong>{{ branch_name }}</strong> and confirm the current delivery status.</p></div>
-</div>
-<div class="stats">
-  <div class="stat"><small>Incoming Files</small><strong>{{ stats.get('incoming',0) }}</strong></div>
-  <div class="stat"><small>Awaiting Physical Submission</small><strong>{{ stats.get('pending',0) }}</strong></div>
-  <div class="stat"><small>Submitted</small><strong>{{ stats.get('submitted',0) }}</strong></div>
-  <div class="stat"><small>Returned</small><strong>{{ stats.get('returned',0) }}</strong></div>
-</div>
-<div class="section"><h2>{{ branch_name }} Delivery Queue</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Status</th><th>Forwarded</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['lga'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td><td>{{ r['received_at'] }}</td></tr>{% else %}<tr><td colspan="5">No files are currently assigned to this branch.</td></tr>{% endfor %}</table></div></div>
-<div class="card role-note"><strong>Branch view</strong><p>This dashboard shows only files currently assigned to your branch. Physical delivery is confirmed in FileTrack by the Supporting Staff member after the file has been physically submitted.</p></div>
+{% extends "base.html" %}{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}{% block content %}
+{% if current_user['role'] == 'LGI Officer' %}
+<div class="head"><div><small>LGA REPORTING DESK</small><h1>LGI Reports Dashboard</h1><p>Receive reports and directives from the Zonal Inspector concerning {{current_user['lga']}}.</p></div><a class="cta" href="{{url_for('reports')}}">View Reports</a></div>
+<div class="stats"><div class="stat"><small>Reports for {{current_user['lga']}}</small><strong>{{lgi_reports|length}}</strong></div><div class="stat"><small>Access</small><strong style="font-size:19px">Reports Only</strong></div></div>
+<div class="section"><h2>Reports from Zonal Inspector</h2><div class="table"><table><tr><th>Report ID</th><th>Type</th><th>PPA / Employer</th><th>Corps Member</th><th>Subject</th><th>Issued</th></tr>{% for r in lgi_reports %}<tr><td><b>{{r['report_id']}}</b></td><td>{{r['report_type']}}</td><td>{{r['ppa_employer'] or '—'}}</td><td>{{r['corps_member'] or '—'}}</td><td>{{r['subject']}}<small>{{r['report_body']}}</small></td><td>{{r['issued_at']}}</td></tr>{% else %}<tr><td colspan="6">No reports have been issued for {{current_user['lga']}} yet.</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h2>LGI Access</h2><p style="margin:0;color:#65747b">Your FileTrack account is limited to reports issued by the Zonal Inspector for your assigned LGA. You do not have access to the zonal file register, physical file inspection, forwarding, or file registration controls.</p></div>
+{% elif current_user['role'] == 'Supporting Staff' %}
+<div class="head"><div><small>REGISTRY, DELIVERY & INSPECTION CONTROL</small><h1>Supporting Staff Dashboard</h1><p>Register incoming files, carry out assigned inspections, and confirm physical delivery of forwarded files.</p></div><a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a></div>
+<div class="stats"><div class="stat"><small>Files Registered</small><strong>{{stats.get('Total',0)}}</strong></div><div class="stat"><small>Awaiting Zonal Review</small><strong>{{stats.get('Received',0)}}</strong></div><div class="stat"><small>Awaiting Physical Submission</small><strong>{{stats.get('Forwarded',0)}}</strong></div><div class="stat"><small>Submitted</small><strong>{{stats.get('Submitted',0)}}</strong></div><div class="stat"><small>My Inspections</small><strong>{{inspection_count or 0}}</strong></div></div>
+<div class="section"><h2>Supporting Staff Work Areas</h2><div class="branches"><a href="{{url_for('inspections')}}"><b>Inspections</b><span>Inspect & report</span>→</a><a href="{{url_for('files_page')}}"><b>File Register</b><span>Register & track</span>→</a><a href="{{url_for('files_page',status='Forwarded')}}"><b>Delivery Queue</b><span>{{stats.get('Forwarded',0)}} pending</span>→</a></div></div>
+<div class="section"><h2>Recent Records</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{url_for('detail',file_id=r['file_id'])}}">{{r['file_id']}}</a></td><td><b>{{r['title']}}</b><small>{{r['reference_no'] or 'No reference number'}}</small></td><td>{{r['lga']}}</td><td>{{r['current_location']}}</td><td><span class="badge {{r['status']|lower}}">{{r['status']}}</span></td></tr>{% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}</table></div></div>
+{% else %}
+<div class="head"><div><small>OPERATIONS CONTROL</small><h1>File Movement Dashboard</h1><p>Monitor documents received from LGIs, inspections and their movement to the State Secretariat.</p></div><a class="cta" href="{{url_for('receive')}}">＋ Register New File</a></div>
+<div class="stats">{% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}<div class="stat"><small>{{k}}</small><strong>{{stats.get(k,0)}}</strong></div>{% endfor %}</div>
+<div class="section"><h2>State Secretariat Branches</h2><div class="branches">{% for b,n in branches %}<a href="{{url_for('files_page',branch=b)}}"><b>{{b}}</b><span>{{n}} file{{'' if n==1 else 's'}}</span>→</a>{% endfor %}</div></div>
+<div class="section"><h2>Inspection & Reporting Control</h2><div class="branches"><a href="{{url_for('inspections')}}"><b>Inspections</b><span>{{pending_inspections or 0}} pending ZI review</span>→</a><a href="{{url_for('reports')}}"><b>LGI Reports</b><span>{{report_count or 0}} issued</span>→</a><a href="{{url_for('files_page')}}"><b>File Register</b><span>All files</span>→</a></div></div>
+<div class="section"><h2>Recent Records</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{url_for('detail',file_id=r['file_id'])}}">{{r['file_id']}}</a></td><td><b>{{r['title']}}</b><small>{{r['reference_no'] or 'No reference number'}}</small></td><td>{{r['lga']}}</td><td>{{r['current_location']}}</td><td><span class="badge {{r['status']|lower}}">{{r['status']}}</span></td></tr>{% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}</table></div></div>
 {% endif %}
 {% endblock %}
