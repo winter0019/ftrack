@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session
-import sqlite3, os
+import os
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.errors import UniqueViolation
 from datetime import datetime
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE=os.path.dirname(os.path.abspath(__file__))
-DB=os.path.join(BASE,"filetrack.db")
 UPLOADS=os.path.join(BASE,"uploads")
 os.makedirs(UPLOADS,exist_ok=True)
 
@@ -18,81 +20,132 @@ PRIORITIES=["Normal","High","Urgent"]
 ROLES=["Administrator","Zonal Inspector","LGI Officer","Branch Official","Supporting Staff"]
 
 def db():
-    c=sqlite3.connect(DB)
-    c.row_factory=sqlite3.Row
-    return c
+    database_url=os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable is not configured.")
+
+    # Render PostgreSQL external connections use SSL. Add this only when
+    # the supplied DATABASE_URL does not already specify an sslmode.
+    if "sslmode=" not in database_url.lower():
+        separator = "&" if "?" in database_url else "?"
+        database_url += separator + "sslmode=require"
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            return psycopg.connect(
+                database_url,
+                row_factory=dict_row,
+                connect_timeout=10,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3,
+            )
+        except psycopg.OperationalError as exc:
+            last_error = exc
+            if attempt < 2:
+                import time
+                time.sleep(1)
+
+    raise last_error
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def init_db():
-    c=db()
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS files(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT UNIQUE NOT NULL,
-      title TEXT NOT NULL,
-      reference_no TEXT,
-      lga TEXT NOT NULL,
-      lgi_name TEXT,
-      received_by TEXT NOT NULL,
-      received_at TEXT NOT NULL,
-      priority TEXT DEFAULT 'Normal',
-      description TEXT,
-      attachment TEXT,
-      status TEXT DEFAULT 'Received',
-      current_location TEXT DEFAULT 'Katsina Zonal Office',
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS movements(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT NOT NULL,
-      from_location TEXT NOT NULL,
-      to_location TEXT NOT NULL,
-      forwarded_by TEXT,
-      receiving_officer TEXT,
-      action TEXT,
-      forwarded_at TEXT NOT NULL,
-      acknowledged_at TEXT,
-      status TEXT DEFAULT 'Forwarded',
-      remarks TEXT
-    );
-    CREATE TABLE IF NOT EXISTS audit_logs(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT NOT NULL,
-      action TEXT NOT NULL,
-      official TEXT,
-      details TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS users(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      full_name TEXT NOT NULL,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL,
-      office TEXT,
-      lga TEXT,
-      active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL
-    );
-    """)
-    # Phase 2 delivery-confirmation fields. These migrations preserve existing filetrack.db data.
-    for statement in [
-        "ALTER TABLE movements ADD COLUMN submitted_by TEXT",
-        "ALTER TABLE movements ADD COLUMN submitted_at TEXT",
-    ]:
-        try:
-            c.execute(statement)
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e).lower():
-                raise
-    c.commit()
-    c.close()
+    """Create/upgrade the PostgreSQL schema used by FileTrack."""
+    with db() as c:
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS files(
+          id BIGSERIAL PRIMARY KEY,
+          file_id TEXT UNIQUE NOT NULL,
+          title TEXT NOT NULL,
+          reference_no TEXT,
+          lga TEXT NOT NULL,
+          lgi_name TEXT,
+          received_by TEXT NOT NULL,
+          received_at TEXT NOT NULL,
+          priority TEXT DEFAULT 'Normal',
+          description TEXT,
+          attachment TEXT,
+          status TEXT DEFAULT 'Received',
+          current_location TEXT DEFAULT 'Katsina Zonal Office',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS movements(
+          id BIGSERIAL PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          from_location TEXT NOT NULL,
+          to_location TEXT NOT NULL,
+          forwarded_by TEXT,
+          receiving_officer TEXT,
+          action TEXT,
+          forwarded_at TEXT NOT NULL,
+          acknowledged_at TEXT,
+          status TEXT DEFAULT 'Forwarded',
+          remarks TEXT,
+          submitted_by TEXT,
+          submitted_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_logs(
+          id BIGSERIAL PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          official TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS users(
+          id BIGSERIAL PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          username TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL,
+          office TEXT,
+          lga TEXT,
+          active INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS inspections(
+          id BIGSERIAL PRIMARY KEY,
+          inspection_id TEXT UNIQUE NOT NULL,
+          lga TEXT NOT NULL,
+          ppa_employer TEXT,
+          corps_member TEXT,
+          subject TEXT NOT NULL,
+          findings TEXT NOT NULL,
+          recommendations TEXT,
+          inspected_by TEXT NOT NULL,
+          inspected_at TEXT NOT NULL,
+          status TEXT DEFAULT 'Submitted to ZI'
+        );
+
+        CREATE TABLE IF NOT EXISTS reports(
+          id BIGSERIAL PRIMARY KEY,
+          report_id TEXT UNIQUE NOT NULL,
+          lga TEXT NOT NULL,
+          report_type TEXT NOT NULL,
+          ppa_employer TEXT,
+          corps_member TEXT,
+          subject TEXT NOT NULL,
+          report_body TEXT NOT NULL,
+          issued_by TEXT NOT NULL,
+          issued_at TEXT NOT NULL,
+          status TEXT DEFAULT 'Issued'
+        );
+
+        ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
+        ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+        """)
 
 def user_count():
     c=db()
-    n=c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    n=c.execute("SELECT COUNT(*) FROM users").fetchone()["count"]
     c.close()
     return n
 
@@ -101,7 +154,7 @@ def current_user():
     if not uid:
         return None
     c=db()
-    u=c.execute("SELECT * FROM users WHERE id=? AND active=1",(uid,)).fetchone()
+    u=c.execute("SELECT * FROM users WHERE id=%s AND active=1",(uid,)).fetchone()
     c.close()
     return u
 
@@ -161,6 +214,16 @@ def supporting_staff_required(view):
     return wrapped
 
 
+def lgi_report_only(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] == "LGI Officer":
+            flash("LGI Officers have report-only access. Reports are issued by the Zonal Inspector for their assigned LGA.","error")
+            return redirect(url_for("reports"))
+        return view(*args,**kwargs)
+    return wrapped
+
 def registry_required(view):
     @wraps(view)
     def wrapped(*args,**kwargs):
@@ -189,6 +252,46 @@ def next_file_id():
     c.close()
     return f"KZO-FM-{datetime.now().year}-{n+1:04d}"
 
+def next_inspection_id():
+    c=db(); n=c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; c.close(); return f"KZO-INSP-{datetime.now().year}-{n+1:04d}"
+
+def next_report_id():
+    c=db(); n=c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]; c.close(); return f"KZO-RPT-{datetime.now().year}-{n+1:04d}"
+
+def inspection_required(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] != "Supporting Staff":
+            flash("Inspection is assigned to Supporting Staff. LGI Officers receive Zonal reports instead.","error"); return redirect(url_for("dashboard"))
+        return view(*args,**kwargs)
+    return wrapped
+
+def report_management_required(view):
+    @wraps(view)
+    def wrapped(*args,**kwargs):
+        if not current_user(): return redirect(url_for("login",next=request.path))
+        if current_user()["role"] not in ("Administrator", "Zonal Inspector"):
+            flash("Only the Administrator or Zonal Inspector may issue reports to LGI Officers.","error"); return redirect(url_for("dashboard"))
+        return view(*args,**kwargs)
+    return wrapped
+
+@app.route("/health")
+def health():
+    try:
+        with db() as c:
+            row = c.execute(
+                "SELECT current_database() AS database_name, current_user AS database_user"
+            ).fetchone()
+        return {
+            "status": "ok",
+            "database": row["database_name"],
+            "user": row["database_user"],
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}, 503
+
+
 @app.route("/login",methods=["GET","POST"])
 def login():
     if current_user():
@@ -197,7 +300,7 @@ def login():
         username=request.form.get("username","").strip()
         password=request.form.get("password","")
         c=db()
-        u=c.execute("SELECT * FROM users WHERE username=?",(username,)).fetchone()
+        u=c.execute("SELECT * FROM users WHERE username=%s",(username,)).fetchone()
         c.close()
         if u and u["active"] and check_password_hash(u["password_hash"],password):
             session.clear()
@@ -236,7 +339,7 @@ def setup():
             c=db()
             c.execute("""INSERT INTO users
                 (full_name,username,password_hash,role,office,lga,active,created_at)
-                VALUES(?,?,?,?,?,?,1,?)""",
+                VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
                 (full_name,username,generate_password_hash(password),
                  "Administrator","Katsina Zonal Office","",now()))
             c.commit()
@@ -264,12 +367,12 @@ def users():
             try:
                 c.execute("""INSERT INTO users
                     (full_name,username,password_hash,role,office,lga,active,created_at)
-                    VALUES(?,?,?,?,?,?,1,?)""",
+                    VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
                     (full_name,username,generate_password_hash(password),
                      role,office,lga,now()))
                 c.commit()
                 flash(f"{full_name} account created successfully.","success")
-            except sqlite3.IntegrityError:
+            except UniqueViolation:
                 flash("That username already exists.","error")
             finally:
                 c.close()
@@ -286,7 +389,7 @@ def toggle_user(user_id):
         flash("You cannot deactivate your own account.","error")
         return redirect(url_for("users"))
     c=db()
-    c.execute("UPDATE users SET active=CASE WHEN active=1 THEN 0 ELSE 1 END WHERE id=?",(user_id,))
+    c.execute("UPDATE users SET active=CASE WHEN active=1 THEN 0 ELSE 1 END WHERE id=%s",(user_id,))
     c.commit()
     c.close()
     flash("Account status updated.","success")
@@ -295,28 +398,18 @@ def toggle_user(user_id):
 @app.route("/")
 @login_required
 def dashboard():
-    c=db()
-    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()[0]
-    forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()[0]
-    submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()[0]
-    acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()[0]
-    returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()[0]
-    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,
-           "returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,
-           "Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
-    branch_counts={}
-    for branch in BRANCHES:
-        branch_counts[branch]=c.execute(
-            "SELECT COUNT(*) FROM files WHERE current_location=?",(branch,)).fetchone()[0]
-    branches=[(branch,branch_counts[branch]) for branch in BRANCHES]
-    recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
-    c.close()
-    return render_template("dashboard.html",stats=stats,branches=branches,
-                           branch_counts=branch_counts,recent=recent)
+    u=current_user(); c=db()
+    if u["role"] == "LGI Officer":
+        reports=c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC LIMIT 20",(u["lga"],)).fetchall(); c.close()
+        return render_template("dashboard.html",lgi_reports=reports)
+    total=c.execute("SELECT COUNT(*) FROM files").fetchone()["count"]; received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()["count"]; forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()["count"]; submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()["count"]; acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()["count"]; returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()["count"]
+    stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,"returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,"Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
+    branch_counts={b:c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s",(b,)).fetchone()["count"] for b in BRANCHES}; branches=[(b,branch_counts[b]) for b in BRANCHES]; recent=c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall(); inspection_count=c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections=c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count=c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]; c.close()
+    return render_template("dashboard.html",stats=stats,branches=branches,branch_counts=branch_counts,recent=recent,inspection_count=inspection_count,pending_inspections=pending_inspections,report_count=report_count)
 
 @app.route("/files")
 @login_required
+@lgi_report_only
 def files_page():
     q=request.args.get("q","").strip()
     status=request.args.get("status","").strip()
@@ -324,13 +417,13 @@ def files_page():
     c=db()
     sql="SELECT * FROM files WHERE 1=1"; args=[]
     if q:
-        sql += """ AND (file_id LIKE ? OR title LIKE ? OR reference_no LIKE ?
-                    OR lga LIKE ? OR lgi_name LIKE ? OR current_location LIKE ?)"""
+        sql += """ AND (file_id LIKE %s OR title LIKE %s OR reference_no LIKE %s
+                    OR lga LIKE %s OR lgi_name LIKE %s OR current_location LIKE %s)"""
         args += [f"%{q}%"]*6
     if status:
-        sql+=" AND status=?"; args.append(status)
+        sql+=" AND status=%s"; args.append(status)
     if branch:
-        sql+=" AND current_location=?"; args.append(branch)
+        sql+=" AND current_location=%s"; args.append(branch)
     sql+=" ORDER BY id DESC"
     rows=c.execute(sql,args).fetchall()
     c.close()
@@ -355,13 +448,13 @@ def receive():
         c.execute("""INSERT INTO files
         (file_id,title,reference_no,lga,lgi_name,received_by,received_at,priority,
          description,attachment,status,current_location,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (fid,title,request.form.get("reference_no"),request.form["lga"],
          request.form.get("lgi_name"),official,t,request.form.get("priority","Normal"),
          request.form.get("description"),attachment,"Received",
          "Katsina Zonal Office",t))
         c.execute("""INSERT INTO audit_logs
-        (file_id,action,official,details,created_at) VALUES(?,?,?,?,?)""",
+        (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
         (fid,"FILE RECEIVED",official,"Received from "+request.form["lga"],t))
         c.commit(); c.close()
         flash(fid+" registered successfully.","success")
@@ -370,13 +463,14 @@ def receive():
 
 @app.route("/file/<file_id>")
 @login_required
+@lgi_report_only
 def detail(file_id):
     c=db()
-    f=c.execute("SELECT * FROM files WHERE file_id=?",(file_id,)).fetchone()
+    f=c.execute("SELECT * FROM files WHERE file_id=%s",(file_id,)).fetchone()
     if not f:
         c.close(); return "File not found",404
-    movements=c.execute("SELECT * FROM movements WHERE file_id=? ORDER BY id DESC",(file_id,)).fetchall()
-    audit=c.execute("SELECT * FROM audit_logs WHERE file_id=? ORDER BY id DESC",(file_id,)).fetchall()
+    movements=c.execute("SELECT * FROM movements WHERE file_id=%s ORDER BY id DESC",(file_id,)).fetchall()
+    audit=c.execute("SELECT * FROM audit_logs WHERE file_id=%s ORDER BY id DESC",(file_id,)).fetchall()
     c.close()
     return render_template("detail.html",f=f,movements=movements,audit=audit,branches=BRANCHES)
 
@@ -384,18 +478,18 @@ def detail(file_id):
 @movement_required
 def forward(file_id):
     t=now(); c=db()
-    f=c.execute("SELECT * FROM files WHERE file_id=?",(file_id,)).fetchone()
+    f=c.execute("SELECT * FROM files WHERE file_id=%s",(file_id,)).fetchone()
     if not f:
         c.close(); return "File not found",404
     official=official_name(); to=request.form["to_location"]
     c.execute("""INSERT INTO movements
     (file_id,from_location,to_location,forwarded_by,receiving_officer,
-     action,forwarded_at,status,remarks) VALUES(?,?,?,?,?,?,?,?,?)""",
+     action,forwarded_at,status,remarks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
     (file_id,f["current_location"],to,official,request.form.get("receiving_officer"),
      request.form.get("action"),t,"Forwarded",request.form.get("remarks")))
-    c.execute("UPDATE files SET current_location=?,status='Forwarded' WHERE file_id=?",(to,file_id))
+    c.execute("UPDATE files SET current_location=%s,status='Forwarded' WHERE file_id=%s",(to,file_id))
     c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(?,?,?,?,?)""",
+    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
     (file_id,"FILE FORWARDED",official,f"{f['current_location']} → {to}",t))
     c.commit(); c.close()
     flash(f"{file_id} forwarded to {to}.","success")
@@ -408,17 +502,17 @@ def acknowledge(file_id):
     # It confirms to the Administrator/Zonal Inspector that the file was physically
     # submitted to the selected Secretariat branch; it is not a branch receipt.
     t=now(); official=official_name(); c=db()
-    m=c.execute("""SELECT * FROM movements WHERE file_id=? AND status='Forwarded'
+    m=c.execute("""SELECT * FROM movements WHERE file_id=%s AND status='Forwarded'
                    ORDER BY id DESC LIMIT 1""",(file_id,)).fetchone()
     if not m:
         c.close(); flash("No pending forwarded file is awaiting physical-submission confirmation.","error")
         return redirect(url_for("detail",file_id=file_id))
-    c.execute("""UPDATE movements SET status='Submitted', submitted_at=?, submitted_by=?,
-                 acknowledged_at=? WHERE id=?""",
+    c.execute("""UPDATE movements SET status='Submitted', submitted_at=%s, submitted_by=%s,
+                 acknowledged_at=%s WHERE id=%s""",
               (t,official,t,m["id"]))
-    c.execute("UPDATE files SET status='Submitted' WHERE file_id=?",(file_id,))
+    c.execute("UPDATE files SET status='Submitted' WHERE file_id=%s",(file_id,))
     c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(?,?,?,?,?)""",
+    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
     (file_id,"PHYSICAL FILE SUBMITTED",official,
      f"Physical file submitted to {m['to_location']}",t))
     c.commit(); c.close()
@@ -429,28 +523,105 @@ def acknowledge(file_id):
 @movement_required
 def return_file(file_id):
     t=now(); official=official_name(); c=db()
-    f=c.execute("SELECT * FROM files WHERE file_id=?",(file_id,)).fetchone()
+    f=c.execute("SELECT * FROM files WHERE file_id=%s",(file_id,)).fetchone()
     if not f:
         c.close(); return "File not found",404
     c.execute("""UPDATE files SET current_location='Katsina Zonal Office',
-                 status='Returned' WHERE file_id=?""",(file_id,))
+                 status='Returned' WHERE file_id=%s""",(file_id,))
     c.execute("""INSERT INTO movements
     (file_id,from_location,to_location,forwarded_by,action,forwarded_at,status,remarks)
-    VALUES(?,?,?,?,?,?,?,?)""",
+    VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
     (file_id,f["current_location"],"Katsina Zonal Office",official,
      "Returned",t,"Returned",request.form.get("remarks")))
     c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(?,?,?,?,?)""",
+    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
     (file_id,"FILE RETURNED",official,
      request.form.get("remarks") or "Returned to Zonal Office",t))
     c.commit(); c.close()
     flash("File returned to Zonal Office.","success")
     return redirect(url_for("detail",file_id=file_id))
 
+@app.route("/inspections")
+@login_required
+def inspections():
+    u=current_user(); c=db()
+    if u["role"] == "Supporting Staff": rows=c.execute("SELECT * FROM inspections WHERE inspected_by=%s ORDER BY id DESC",(u["full_name"],)).fetchall()
+    elif u["role"] in ("Administrator", "Zonal Inspector"): rows=c.execute("SELECT * FROM inspections ORDER BY id DESC").fetchall()
+    else: c.close(); flash("Inspection access is not available to this role.","error"); return redirect(url_for("dashboard"))
+    c.close(); return render_template("inspections.html",rows=rows)
+
+@app.route("/inspection/new",methods=["GET","POST"])
+@inspection_required
+def new_inspection():
+    if request.method=="POST":
+        subject=request.form.get("subject","").strip(); findings=request.form.get("findings","").strip()
+        if not subject or not findings: flash("Inspection subject and findings are required.","error"); return redirect(url_for("new_inspection"))
+        t=now(); iid=next_inspection_id(); u=current_user(); c=db(); c.execute("INSERT INTO inspections (inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(iid,request.form.get("lga"),request.form.get("ppa_employer"),request.form.get("corps_member"),subject,findings,request.form.get("recommendations"),u["full_name"],t,"Submitted to ZI")); c.commit(); c.close(); flash(f"{iid} inspection submitted to the Zonal Inspector.","success"); return redirect(url_for("inspections"))
+    return render_template("inspection_form.html",lgas=LGAS)
+
+@app.route("/reports")
+@login_required
+def reports():
+    u=current_user(); c=db()
+    if u["role"] == "LGI Officer": rows=c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC",(u["lga"],)).fetchall()
+    elif u["role"] in ("Administrator", "Zonal Inspector"): rows=c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+    else: c.close(); flash("Reports are not available to this role.","error"); return redirect(url_for("dashboard"))
+    c.close(); return render_template("reports.html",rows=rows,report_only=(u["role"]=="LGI Officer"))
+
+@app.route("/report/new",methods=["GET","POST"])
+@report_management_required
+def new_report():
+    if request.method=="POST":
+        subject=request.form.get("subject","").strip(); body=request.form.get("report_body","").strip(); lga=request.form.get("lga","").strip()
+        if not subject or not body or lga not in LGAS: flash("LGA, report subject and report content are required.","error"); return redirect(url_for("new_report"))
+        t=now(); rid=next_report_id(); u=current_user(); c=db(); c.execute("INSERT INTO reports (report_id,lga,report_type,ppa_employer,corps_member,subject,report_body,issued_by,issued_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(rid,lga,request.form.get("report_type","General LGA Report"),request.form.get("ppa_employer"),request.form.get("corps_member"),subject,body,u["full_name"],t,"Issued")); c.commit(); c.close(); flash(f"{rid} issued to {lga} LGI.","success"); return redirect(url_for("reports"))
+    return render_template("report_form.html",lgas=LGAS)
+
 @app.route("/download/<name>")
 @login_required
+@lgi_report_only
 def download(name):
     return send_from_directory(UPLOADS,name,as_attachment=True)
+
+@app.route("/admin/db-inspection")
+@admin_required
+def db_inspection():
+    """Read-only PostgreSQL inspection page for the Administrator."""
+    with db() as c:
+        tables = c.execute("""
+            SELECT tablename
+            FROM pg_catalog.pg_tables
+            WHERE schemaname='public'
+            ORDER BY tablename
+        """).fetchall()
+
+        counts = {}
+        for row in tables:
+            table = row["tablename"]
+            counts[table] = c.execute(
+                f'SELECT COUNT(*) AS count FROM "{table}"'
+            ).fetchone()["count"]
+
+        database = c.execute(
+            "SELECT current_database() AS database"
+        ).fetchone()["database"]
+        version = c.execute(
+            "SELECT version() AS version"
+        ).fetchone()["version"]
+
+    rows = "".join(
+        f"<tr><td>{name}</td><td>{count}</td></tr>"
+        for name, count in counts.items()
+    )
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Database Inspection</title>
+<style>body{{font-family:Arial,sans-serif;margin:40px}}table{{border-collapse:collapse}}
+th,td{{border:1px solid #ccc;padding:8px 12px}}th{{background:#f3f3f3}}</style></head>
+<body><h1>PostgreSQL Database Inspection</h1>
+<p><b>Database:</b> {database}</p><p><b>Server:</b> {version}</p>
+<table><tr><th>Table</th><th>Rows</th></tr>{rows}</table>
+</body></html>"""
+    return html
 
 init_db()
 
