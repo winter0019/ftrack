@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 import os
 import csv
 import io
-import json
 import re
 import psycopg
 from psycopg.rows import dict_row
@@ -65,44 +64,7 @@ def integrate_inspection_ui(response):
         if request.path in ("/login", "/setup") or request.path.startswith("/admin/db-inspection"):
             return response
         html=response.get_data(as_text=True)
-
-        # Show a clear confirmation after a Supporting Staff member successfully
-        # confirms physical delivery of a file. The detail template belongs to
-        # the core FileTrack UI, so this enhancement avoids replacing it.
-        if request.args.get("submitted") == "1" and request.path.startswith("/file/"):
-            confirmation = (
-                '<div data-filetrack-submission-confirmed="1" style="margin:18px 0;padding:16px 18px;'
-                'border:1px solid #86efac;border-left:5px solid #16a34a;border-radius:12px;'
-                'background:#f0fdf4;color:#166534;font-family:Arial,sans-serif;">'
-                '<div style="font-weight:800;font-size:17px;margin-bottom:4px;">'
-                '✓ Physical Submission Confirmed</div>'
-                '<div>The file has been recorded as physically submitted to the selected Secretariat branch.</div>'
-                '</div>'
-            )
-            html = html.replace('</main>', confirmation + '</main>', 1) if '</main>' in html else confirmation + html
-            confirmation_script = (
-                '<script>document.addEventListener("DOMContentLoaded",function(){'
-                'document.querySelectorAll("button,input[type=submit]").forEach(function(el){'
-                'var t=(el.innerText||el.value||"").trim().toLowerCase();'
-                'if(t.indexOf("confirm physical submission")!==-1){'
-                'el.disabled=true;el.style.opacity=".65";el.style.cursor="not-allowed";'
-                'if(el.tagName.toLowerCase()==="input")el.value="✓ Physical Submission Confirmed";'
-                'else el.innerText="✓ Physical Submission Confirmed";}});});</script>'
-            )
-            html = html.replace('</body>', confirmation_script + '</body>', 1) if '</body>' in html else html + confirmation_script
-
-        # Zonal Inspector/Admin live PPA clearance panel on the main dashboard.
-        # It is intentionally read-only and refreshes from PostgreSQL every 10 seconds.
-        if request.path=="/" and session.get("role") in ("Administrator","Zonal Inspector") and 'data-filetrack-live-clearance="1"' not in html:
-            live_card='''\n<section data-filetrack-live-clearance="1" style="margin:24px 0;padding:22px 24px;border:1px solid #dfe8e4;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,81,61,.07);">\n  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">\n    <div>\n      <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#12865f;text-transform:uppercase;margin-bottom:6px;">LIVE FIELD MONITORING</div>\n      <h2 style="margin:0 0 6px;color:#17262f;font-size:24px;">PPA Clearance Dashboard</h2>\n      <p style="margin:0;color:#6b7c84;">Real-time progress reported by assigned Supporting Staff. Cleared = latest status is Present.</p>\n    </div>\n    <div id="ft-live-updated" style="font-size:12px;color:#6b7280;">Loading…</div>\n  </div>\n  <div id="ft-live-summary" style="margin-top:16px;">\n    <div style="padding:14px;border:1px solid #e5e7eb;border-radius:10px;color:#6b7280;">Loading current PPA clearance status…</div>\n  </div>\n</section>\n<script>\n(function(){\n  function esc(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];});}\n  function badge(text,bg,fg){return '<span style="display:inline-block;padding:5px 9px;border-radius:999px;background:'+bg+';color:'+fg+';font-weight:800;font-size:12px;">'+esc(text)+'</span>';}\n  async function refresh(){\n    var box=document.getElementById('ft-live-summary'),stamp=document.getElementById('ft-live-updated');\n    if(!box)return;\n    try{\n      var r=await fetch('/inspection/live-dashboard',{cache:'no-store'});\n      var d=await r.json();\n      if(!r.ok) throw new Error(d.error||'Unable to load live dashboard');\n      var rows=d.ppas||[];\n      if(!rows.length){box.innerHTML='<div style="padding:14px;border:1px solid #e5e7eb;border-radius:10px;color:#6b7280;">No active PPA assignments yet.</div>';}\n      else{\n        var html='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>'+\n          '<th style="padding:10px;text-align:left;border-bottom:1px solid #e5e7eb">PPA</th>'+\n          '<th style="padding:10px;text-align:left;border-bottom:1px solid #e5e7eb">LGA</th>'+\n          '<th style="padding:10px;text-align:left;border-bottom:1px solid #e5e7eb">Assigned Staff</th>'+\n          '<th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">Total</th>'+\n          '<th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">Cleared</th>'+\n          '<th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">Not Cleared</th>'+\n          '<th style="padding:10px;text-align:left;border-bottom:1px solid #e5e7eb">Last Update</th>'+\n          '</tr></thead><tbody>';\n        rows.forEach(function(x){\n          var pct=x.total?Math.round((x.cleared/x.total)*100):0;\n          html+='<tr>'+\n            '<td style="padding:10px;border-bottom:1px solid #f0f2f4;font-weight:700">'+esc(x.ppa_name)+'</td>'+\n            '<td style="padding:10px;border-bottom:1px solid #f0f2f4">'+esc(x.lga)+'</td>'+\n            '<td style="padding:10px;border-bottom:1px solid #f0f2f4">'+esc(x.staff_name)+'</td>'+\n            '<td style="padding:10px;text-align:center;border-bottom:1px solid #f0f2f4">'+esc(x.total)+'</td>'+\n            '<td style="padding:10px;text-align:center;border-bottom:1px solid #f0f2f4">'+badge(x.cleared+' ('+pct+'%)','#dcfce7','#166534')+'</td>'+\n            '<td style="padding:10px;text-align:center;border-bottom:1px solid #f0f2f4">'+badge(x.not_cleared,'#fee2e2','#991b1b')+'</td>'+\n            '<td style="padding:10px;border-bottom:1px solid #f0f2f4;font-size:12px;color:#6b7280">'+esc(x.last_update||'Not yet updated')+'</td>'+\n            '</tr>';\n        });\n        html+='</tbody></table></div>';\n        box.innerHTML=html;\n      }\n      stamp.textContent='Updated: '+esc(d.updated_at)+' • auto-refresh 10s';\n    }catch(e){box.innerHTML='<div style="padding:14px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;">Live clearance data could not be loaded. The rest of the dashboard remains available.</div>';stamp.textContent='Update unavailable';}\n  }\n  refresh();\n  setInterval(refresh,10000);\n})();\n</script>\n'''
-            m_live=re.search(r'(<h1[^>]*>\s*File Movement Dashboard\s*</h1>)',html,flags=re.I)
-            if m_live:
-                pos=m_live.end(); html=html[:pos]+live_card+html[pos:]
-            else:
-                html=html.replace('</main>',live_card+'</main>',1)
-
         if 'data-filetrack-inspection="1"' in html:
-            response.set_data(html)
             return response
 
         nav_link='<a href="/inspections" data-filetrack-inspection="1" style="margin-left:18px;font-weight:700;text-decoration:none;color:inherit;">Inspection</a>'
@@ -270,23 +232,6 @@ def init_db():
           other_reason TEXT,
           remarks TEXT,
           inspected_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS inspection_submissions(
-          id BIGSERIAL PRIMARY KEY,
-          ppa_id BIGINT NOT NULL REFERENCES ppa_establishments(id) ON DELETE RESTRICT,
-          supporting_staff_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-          submitted_at TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'Submitted',
-          reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
-          reviewed_at TEXT,
-          review_comment TEXT,
-          total_count INTEGER DEFAULT 0,
-          present_count INTEGER DEFAULT 0,
-          absent_count INTEGER DEFAULT 0,
-          pending_count INTEGER DEFAULT 0,
-          other_count INTEGER DEFAULT 0,
-          snapshot JSONB NOT NULL DEFAULT '[]'::jsonb
         );
 
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
@@ -667,7 +612,7 @@ def acknowledge(file_id):
      f"Physical file submitted to {m['to_location']}",t))
     c.commit(); c.close()
     flash(f"Physical submission of {file_id} to {m['to_location']} confirmed.","success")
-    return redirect(url_for("detail",file_id=file_id, submitted=1))
+    return redirect(url_for("detail",file_id=file_id))
 
 @app.route("/return/<file_id>",methods=["POST"])
 @movement_required
@@ -865,18 +810,9 @@ def inspections():
         return render_template("inspections.html",mode="management",ppas=ppas,assignments=assignments,staff=staff,recent=recent)
     if u["role"] == "Supporting Staff":
         c=db()
-        assigned=c.execute("""SELECT p.id,p.name,p.lga,COUNT(cm.id)::int AS corps_count,
-                    COUNT(cm.id) FILTER (WHERE lr.attendance_status='Present')::int AS present_count,
-                    COUNT(cm.id) FILTER (WHERE lr.attendance_status='Absent')::int AS absent_count,
-                    COUNT(cm.id) FILTER (WHERE lr.id IS NULL)::int AS pending_count
+        assigned=c.execute("""SELECT p.id,p.name,p.lga,COUNT(cm.id) AS corps_count
                     FROM inspection_assignments ia JOIN ppa_establishments p ON p.id=ia.ppa_id
                     LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
-                    LEFT JOIN LATERAL (
-                        SELECT ir.id,ir.attendance_status
-                        FROM inspection_records ir
-                        WHERE ir.corps_member_id=cm.id AND ir.ppa_id=p.id
-                        ORDER BY ir.id DESC LIMIT 1
-                    ) lr ON TRUE
                     WHERE ia.supporting_staff_id=%s AND ia.status='Active' AND p.active=1
                     GROUP BY p.id ORDER BY p.lga,p.name""",(u["id"],)).fetchall()
         mine=c.execute("""SELECT ir.*,cm.state_code,cm.full_name,p.name AS ppa_name,p.lga
@@ -1094,278 +1030,11 @@ def inspection_remove_assignment(assignment_id):
     c=db(); c.execute("UPDATE inspection_assignments SET status='Removed' WHERE id=%s",(assignment_id,)); c.commit(); c.close(); flash("Inspection assignment removed.","success"); return redirect(url_for("inspections"))
 
 
-
-@app.route("/inspection/submit/<int:ppa_id>", methods=["POST"])
-@login_required
-def inspection_submit_to_zi(ppa_id):
-    """Create a timestamped, reviewable snapshot of the current PPA inspection."""
-    u=current_user()
-    if u["role"] != "Supporting Staff":
-        flash("Only Supporting Staff can submit an inspection report to the Zonal Inspector.","error")
-        return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
-    c=db()
-    allowed=c.execute("""SELECT 1 FROM inspection_assignments
-                       WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'""",(ppa_id,u["id"])).fetchone()
-    ppa=c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1",(ppa_id,)).fetchone()
-    if not allowed or not ppa:
-        c.close(); flash("This PPA is not assigned to you.","error")
-        return redirect(url_for("inspections"))
-    rows=c.execute("""SELECT cm.id,cm.state_code,cm.full_name,cm.gender,cm.discipline,cm.batch,cm.stream,
-                            lr.attendance_status,lr.inspected_at,lr.remarks,lr.other_reason
-                     FROM corps_members cm
-                     LEFT JOIN LATERAL (
-                       SELECT ir.attendance_status,ir.inspected_at,ir.remarks,ir.other_reason
-                       FROM inspection_records ir
-                       WHERE ir.corps_member_id=cm.id AND ir.ppa_id=%s
-                       ORDER BY ir.id DESC LIMIT 1
-                     ) lr ON TRUE
-                     WHERE cm.ppa_id=%s AND cm.status='Active'
-                     ORDER BY cm.full_name""",(ppa_id,ppa_id)).fetchall()
-    snapshot=[]
-    for r in rows:
-        snapshot.append({k:r[k] for k in ("id","state_code","full_name","gender","discipline","batch","stream","attendance_status","inspected_at","remarks","other_reason")})
-    present=sum(1 for r in rows if r["attendance_status"]=="Present")
-    absent=sum(1 for r in rows if r["attendance_status"]=="Absent")
-    pending=sum(1 for r in rows if r["attendance_status"] is None)
-    other=len(rows)-present-absent-pending
-    t=now()
-    c.execute("""INSERT INTO inspection_submissions
-      (ppa_id,supporting_staff_id,submitted_at,status,total_count,present_count,absent_count,pending_count,other_count,snapshot)
-      VALUES(%s,%s,%s,'Submitted',%s,%s,%s,%s,%s,%s::jsonb)""",
-      (ppa_id,u["id"],t,len(rows),present,absent,pending,other,json.dumps(snapshot,default=str)))
-    c.commit(); c.close()
-    flash(f"Inspection report for {ppa['name']} submitted to the Zonal Inspector for review.","success")
-    return redirect(url_for("inspection_ppa",ppa_id=ppa_id))
-
-@app.route("/inspection/review-inbox")
-@login_required
-def inspection_review_inbox():
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Only the Administrator or Zonal Inspector may review inspection submissions.","error")
-        return redirect(url_for("inspections"))
-    c=db()
-    rows=c.execute("""SELECT s.*,p.name AS ppa_name,p.lga,u.full_name AS staff_name,
-                            rv.full_name AS reviewer_name
-                     FROM inspection_submissions s
-                     JOIN ppa_establishments p ON p.id=s.ppa_id
-                     JOIN users u ON u.id=s.supporting_staff_id
-                     LEFT JOIN users rv ON rv.id=s.reviewed_by
-                     ORDER BY CASE WHEN s.status='Submitted' THEN 0 WHEN s.status='Returned' THEN 1 ELSE 2 END,
-                              s.id DESC""").fetchall()
-    c.close()
-    return render_template("inspection_review_inbox.html",rows=rows)
-
-@app.route("/inspection/review/<int:submission_id>")
-@login_required
-def inspection_review_detail(submission_id):
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Only the Administrator or Zonal Inspector may review inspection submissions.","error")
-        return redirect(url_for("inspections"))
-    c=db()
-    row=c.execute("""SELECT s.*,p.name AS ppa_name,p.lga,u.full_name AS staff_name,
-                           rv.full_name AS reviewer_name
-                    FROM inspection_submissions s
-                    JOIN ppa_establishments p ON p.id=s.ppa_id
-                    JOIN users u ON u.id=s.supporting_staff_id
-                    LEFT JOIN users rv ON rv.id=s.reviewed_by
-                    WHERE s.id=%s""",(submission_id,)).fetchone()
-    c.close()
-    if not row: return "Inspection submission not found",404
-    data=dict(row)
-    data["snapshot"]=data["snapshot"] if isinstance(data["snapshot"],list) else json.loads(data["snapshot"])
-    present=[x for x in data["snapshot"] if x.get("attendance_status")=="Present"]
-    absent=[x for x in data["snapshot"] if x.get("attendance_status")=="Absent"]
-    pending=[x for x in data["snapshot"] if not x.get("attendance_status")]
-    other=[x for x in data["snapshot"] if x.get("attendance_status") not in (None,"Present","Absent")]
-    return render_template("inspection_review_detail.html",submission=data,present=present,absent=absent,pending=pending,other=other)
-
-@app.route("/inspection/review/<int:submission_id>/decision", methods=["POST"])
-@login_required
-def inspection_review_decision(submission_id):
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Only the Administrator or Zonal Inspector may review inspection submissions.","error")
-        return redirect(url_for("inspections"))
-    decision=request.form.get("decision","").strip()
-    comment=request.form.get("review_comment","").strip()
-    if decision not in ("Reviewed","Returned"):
-        flash("Select Reviewed or Returned.","error")
-        return redirect(url_for("inspection_review_detail",submission_id=submission_id))
-    if decision=="Returned" and not comment:
-        flash("Please provide a reason when returning a report to Supporting Staff.","error")
-        return redirect(url_for("inspection_review_detail",submission_id=submission_id))
-    c=db()
-    exists=c.execute("SELECT id FROM inspection_submissions WHERE id=%s",(submission_id,)).fetchone()
-    if not exists:
-        c.close(); return "Inspection submission not found",404
-    c.execute("""UPDATE inspection_submissions
-                 SET status=%s,reviewed_by=%s,reviewed_at=%s,review_comment=%s
-                 WHERE id=%s""",(decision,u["id"],now(),comment,submission_id))
-    c.commit(); c.close()
-    flash("Inspection report marked as reviewed." if decision=="Reviewed" else "Inspection report returned to Supporting Staff for attention.","success")
-    return redirect(url_for("inspection_review_detail",submission_id=submission_id))
-
-@app.route("/inspection/reports")
-@login_required
-def inspection_reports():
-    """Hierarchical inspection reports for the Zonal Inspector/Admin.
-
-    Structure: Supporting Staff -> Assigned PPA -> Present / Absent / Pending.
-    The report uses the latest inspection record for each active Corps Member.
-    """
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Inspection reports are available to the Administrator and Zonal Inspector.","error")
-        return redirect(url_for("inspections"))
-    c=db()
-    staff_rows=c.execute("""
-        SELECT u.id, u.full_name,
-               COUNT(DISTINCT ia.ppa_id)::int AS ppa_count,
-               COUNT(DISTINCT cm.id)::int AS corps_count,
-               COUNT(DISTINCT cm.id) FILTER (WHERE lr.attendance_status='Present')::int AS present_count,
-               COUNT(DISTINCT cm.id) FILTER (WHERE lr.attendance_status='Absent')::int AS absent_count,
-               COUNT(DISTINCT cm.id) FILTER (WHERE lr.id IS NULL)::int AS pending_count
-        FROM inspection_assignments ia
-        JOIN users u ON u.id=ia.supporting_staff_id
-        JOIN ppa_establishments p ON p.id=ia.ppa_id AND p.active=1
-        LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
-        LEFT JOIN LATERAL (
-            SELECT ir.id, ir.attendance_status
-            FROM inspection_records ir
-            WHERE ir.corps_member_id=cm.id AND ir.ppa_id=p.id
-            ORDER BY ir.id DESC LIMIT 1
-        ) lr ON TRUE
-        WHERE ia.status='Active' AND u.active=1
-        GROUP BY u.id,u.full_name
-        ORDER BY u.full_name
-    """).fetchall()
-    c.close()
-    return render_template("inspection_reports.html",staff_rows=staff_rows)
-
-
-@app.route("/inspection/reports/staff/<int:staff_id>")
-@login_required
-def inspection_report_staff(staff_id):
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Inspection reports are available to the Administrator and Zonal Inspector.","error")
-        return redirect(url_for("inspections"))
-    c=db()
-    staff=c.execute("SELECT id,full_name,username FROM users WHERE id=%s AND role='Supporting Staff'",(staff_id,)).fetchone()
-    if not staff:
-        c.close(); return "Supporting Staff not found",404
-    ppas=c.execute("""
-        SELECT p.id,p.name,p.lga,
-               COUNT(cm.id)::int AS total,
-               COUNT(cm.id) FILTER (WHERE lr.attendance_status='Present')::int AS present_count,
-               COUNT(cm.id) FILTER (WHERE lr.attendance_status='Absent')::int AS absent_count,
-               COUNT(cm.id) FILTER (WHERE lr.id IS NULL)::int AS pending_count
-        FROM inspection_assignments ia
-        JOIN ppa_establishments p ON p.id=ia.ppa_id AND p.active=1
-        LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
-        LEFT JOIN LATERAL (
-            SELECT ir.id,ir.attendance_status
-            FROM inspection_records ir
-            WHERE ir.corps_member_id=cm.id AND ir.ppa_id=p.id
-            ORDER BY ir.id DESC LIMIT 1
-        ) lr ON TRUE
-        WHERE ia.supporting_staff_id=%s AND ia.status='Active'
-        GROUP BY p.id,p.name,p.lga
-        ORDER BY p.lga,p.name
-    """,(staff_id,)).fetchall()
-    c.close()
-    return render_template("inspection_report_staff.html",staff=staff,ppas=ppas)
-
-
-@app.route("/inspection/reports/ppa/<int:ppa_id>")
-@login_required
-def inspection_report_ppa(ppa_id):
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Inspection reports are available to the Administrator and Zonal Inspector.","error")
-        return redirect(url_for("inspections"))
-    c=db()
-    ppa=c.execute("""
-        SELECT p.*,u.id AS staff_id,u.full_name AS staff_name
-        FROM ppa_establishments p
-        JOIN inspection_assignments ia ON ia.ppa_id=p.id AND ia.status='Active'
-        JOIN users u ON u.id=ia.supporting_staff_id
-        WHERE p.id=%s AND p.active=1
-    """,(ppa_id,)).fetchone()
-    if not ppa:
-        c.close(); return "PPA not found or not actively assigned",404
-    rows=c.execute("""
-        SELECT cm.id,cm.state_code,cm.full_name,cm.gender,cm.discipline,
-               cm.batch,cm.stream,lr.attendance_status,lr.inspected_at,lr.remarks,
-               lr.other_reason
-        FROM corps_members cm
-        LEFT JOIN LATERAL (
-            SELECT ir.attendance_status,ir.inspected_at,ir.remarks,ir.other_reason
-            FROM inspection_records ir
-            WHERE ir.corps_member_id=cm.id AND ir.ppa_id=%s
-            ORDER BY ir.id DESC LIMIT 1
-        ) lr ON TRUE
-        WHERE cm.ppa_id=%s AND cm.status='Active'
-        ORDER BY CASE WHEN lr.attendance_status='Present' THEN 1 WHEN lr.attendance_status='Absent' THEN 2 ELSE 3 END, cm.full_name
-    """,(ppa_id,ppa_id)).fetchall()
-    c.close()
-    present=[r for r in rows if r["attendance_status"]=="Present"]
-    absent=[r for r in rows if r["attendance_status"]=="Absent"]
-    pending=[r for r in rows if r["attendance_status"] is None]
-    other=[r for r in rows if r["attendance_status"] not in (None,"Present","Absent")]
-    return render_template("inspection_report_ppa.html",ppa=ppa,present=present,absent=absent,pending=pending,other=other)
-
-@app.route("/inspection/live-dashboard")
-@login_required
-def inspection_live_dashboard():
-    """Return current PPA inspection/clearance progress for ZI/Admin dashboard.
-
-    Cleared = latest inspection status is Present.
-    Not Cleared = active Corps Member has no latest Present inspection.
-    The endpoint is read-only and is polled by the dashboard every 10 seconds.
-    """
-    u=current_user()
-    if u["role"] not in ("Administrator","Zonal Inspector"):
-        return {"error":"Only the Administrator or Zonal Inspector may view the live inspection dashboard."},403
-    c=db()
-    rows=c.execute("""
-        WITH latest AS (
-            SELECT DISTINCT ON (ir.corps_member_id)
-                   ir.corps_member_id, ir.attendance_status, ir.inspected_at,
-                   u.full_name AS inspector_name
-            FROM inspection_records ir
-            JOIN users u ON u.id=ir.inspected_by
-            ORDER BY ir.corps_member_id, ir.id DESC
-        )
-        SELECT p.id, p.name AS ppa_name, p.lga,
-               COALESCE(st.full_name,'Not assigned') AS staff_name,
-               COUNT(cm.id)::int AS total,
-               COUNT(*) FILTER (WHERE l.attendance_status='Present')::int AS cleared,
-               COUNT(*) FILTER (WHERE l.attendance_status IS NULL OR l.attendance_status<>'Present')::int AS not_cleared,
-               COUNT(*) FILTER (WHERE l.attendance_status='Absent')::int AS absent,
-               COUNT(*) FILTER (WHERE l.attendance_status='Leave')::int AS leave_count,
-               COUNT(*) FILTER (WHERE l.attendance_status='Sick Leave')::int AS sick_leave,
-               COUNT(*) FILTER (WHERE l.attendance_status='Maternity Leave')::int AS maternity_leave,
-               MAX(l.inspected_at) AS last_update
-        FROM ppa_establishments p
-        JOIN inspection_assignments ia ON ia.ppa_id=p.id AND ia.status='Active'
-        LEFT JOIN users st ON st.id=ia.supporting_staff_id
-        LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
-        LEFT JOIN latest l ON l.corps_member_id=cm.id
-        WHERE p.active=1
-        GROUP BY p.id,p.name,p.lga,st.full_name
-        ORDER BY p.lga,p.name
-    """).fetchall()
-    c.close()
-    return {"updated_at":now(),"ppas":[dict(r) for r in rows]}
-
-
 @app.route("/inspection/ppa/<int:ppa_id>")
 @login_required
 def inspection_ppa(ppa_id):
-    u=current_user(); c=db(); p=c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1",(ppa_id,)).fetchone()
+    u=current_user(); c=db()
+    p=c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1",(ppa_id,)).fetchone()
     if not p:
         c.close(); return "PPA not found",404
     if u["role"]=="Supporting Staff":
@@ -1374,43 +1043,32 @@ def inspection_ppa(ppa_id):
             c.close(); flash("This PPA is not assigned to you.","error"); return redirect(url_for("inspections"))
     elif u["role"] not in ("Administrator","Zonal Inspector"):
         c.close(); flash("Inspection access is not available to this role.","error"); return redirect(url_for("dashboard"))
-    members=c.execute("""SELECT cm.*,lr.attendance_status,lr.inspected_at,lr.remarks,lr.other_reason
-                    FROM corps_members cm
-                    LEFT JOIN LATERAL (
-                        SELECT ir.attendance_status,ir.inspected_at,ir.remarks,ir.other_reason
-                        FROM inspection_records ir
-                        WHERE ir.corps_member_id=cm.id AND ir.ppa_id=%s
-                        ORDER BY ir.id DESC LIMIT 1
-                    ) lr ON TRUE
-                    WHERE cm.ppa_id=%s AND cm.status='Active' ORDER BY cm.full_name""",(ppa_id,ppa_id)).fetchall()
-    present=[m for m in members if m["attendance_status"]=="Present"]
-    absent=[m for m in members if m["attendance_status"]=="Absent"]
-    pending=[m for m in members if m["attendance_status"] is None]
-    other=[m for m in members if m["attendance_status"] not in (None,"Present","Absent")]
-    latest_submission=c.execute("""SELECT s.*,rv.full_name AS reviewer_name
-                                  FROM inspection_submissions s
-                                  LEFT JOIN users rv ON rv.id=s.reviewed_by
-                                  WHERE s.ppa_id=%s ORDER BY s.id DESC LIMIT 1""",(ppa_id,)).fetchone()
+    members=c.execute("SELECT * FROM corps_members WHERE ppa_id=%s AND status='Active' ORDER BY full_name",(ppa_id,)).fetchall()
+    last_submission=c.execute("""SELECT ir.inspected_at,ir.attendance_status,u.full_name AS inspector_name
+        FROM inspection_records ir JOIN users u ON u.id=ir.inspected_by
+        WHERE ir.ppa_id=%s ORDER BY ir.id DESC LIMIT 1""",(ppa_id,)).fetchone()
     c.close()
-    return render_template("inspection_ppa.html",ppa=p,members=members,present=present,absent=absent,pending=pending,other=other,latest_submission=latest_submission)
-
+    return render_template("inspection_ppa.html",ppa=p,members=members,last_submission=last_submission)
 
 @app.route("/inspection/ppa/<int:ppa_id>/search")
 @login_required
 def inspection_search(ppa_id):
     u=current_user(); state=request.args.get("state_code","").strip()
     if u["role"]!="Supporting Staff": return {"error":"Only Supporting Staff may use this search."},403
-    c=db(); allowed=c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'",(ppa_id,u["id"])).fetchone()
+    if not state: return {"found":False,"message":"Enter a State Code to search."}
+    c=db()
+    allowed=c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'",(ppa_id,u["id"])).fetchone()
     if not allowed: c.close(); return {"error":"PPA is not assigned to you."},403
-    # State Codes are case-insensitive and surrounding spaces are ignored.
-    # This lets staff enter kt/26a/0173, KT/26A/0173, or values copied with spaces.
-    row=c.execute("""SELECT cm.*,p.name AS ppa_name,p.lga FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
-                     WHERE cm.ppa_id=%s
-                       AND UPPER(TRIM(cm.state_code))=UPPER(TRIM(%s))
-                       AND cm.status='Active'""",(ppa_id,state)).fetchone(); c.close()
-    if not row: return {"found":False,"message":"No active corps member was found under this PPA for that State Code."}
+    row=c.execute("""SELECT cm.*,p.name AS ppa_name,p.lga,
+        (SELECT ir.attendance_status FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_status,
+        (SELECT ir.inspected_at FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_at,
+        (SELECT ir.remarks FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_remarks,
+        (SELECT ir.other_reason FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_other_reason
+        FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
+        WHERE cm.ppa_id=%s AND UPPER(REPLACE(cm.state_code,' ',''))=UPPER(REPLACE(%s,' ','')) AND cm.status='Active'""",(ppa_id,state)).fetchone()
+    c.close()
+    if not row: return {"found":False,"message":"No active corps member with that State Code was found under this PPA."}
     return {"found":True,"member":dict(row)}
-
 
 @app.route("/inspection/record",methods=["POST"])
 @login_required
