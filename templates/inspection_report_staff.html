@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{staff.full_name}} — Inspection Report</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;color:#1f2937}.wrap{max-width:1200px;margin:28px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 8px #00000008}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.folder{display:block;text-decoration:none;color:#111827;background:#fff;border:1px solid #dbe3ea;border-radius:14px;padding:18px}.folder-icon{font-size:32px}.muted{color:#6b7280}.pill{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px;margin:3px 4px 0 0}.present{background:#dcfce7;color:#166534}.absent{background:#fee2e2;color:#991b1b}.pending{background:#fef3c7;color:#92400e}.btn{display:inline-block;padding:9px 13px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;font-size:14px}
+</style></head><body><div class="wrap">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px"><div><a class="btn" href="{{url_for('inspection_reports')}}">← Staff Folders</a><h1 style="margin:14px 0 4px">{{staff.full_name}}</h1><div class="muted">Inspection reports based on assigned PPAs</div></div><a class="btn" href="{{url_for('dashboard')}}">Dashboard</a></div>
+<div class="grid">
+{% for p in ppas %}
+<a class="folder" href="{{url_for('inspection_report_ppa',ppa_id=p.id)}}">
+<div class="folder-icon">📂</div><h2 style="margin:8px 0 4px">{{p.name}}</h2><div class="muted">{{p.lga}}</div>
+<div style="margin-top:12px"><span class="pill present">Present {{p.present_count}}</span><span class="pill absent">Absent {{p.absent_count}}</span><span class="pill pending">Pending {{p.pending_count}}</span></div>
+<div class="muted" style="margin-top:10px">{{p.total}} active Corps Members</div>
+</a>
+{% else %}<div class="card">No active PPA is assigned to this staff member.</div>{% endfor %}
+</div></div></body></html>

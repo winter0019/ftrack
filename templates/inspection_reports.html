@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inspection Reports to ZI</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;color:#1f2937}.wrap{max-width:1200px;margin:28px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 8px #00000008}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.folder{display:block;text-decoration:none;color:#111827;background:#fff;border:1px solid #dbe3ea;border-radius:14px;padding:18px;transition:.15s}.folder:hover{border-color:#94a3b8;box-shadow:0 5px 16px #00000010}.folder-icon{font-size:32px}.muted{color:#6b7280}.pill{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px;margin:3px 4px 0 0}.present{background:#dcfce7;color:#166534}.absent{background:#fee2e2;color:#991b1b}.pending{background:#fef3c7;color:#92400e}.btn{display:inline-block;padding:9px 13px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;font-size:14px}
+</style></head><body><div class="wrap">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px"><h1 style="margin:0">Inspection Reports to ZI</h1><div style="display:flex;gap:8px"><a class="btn" href="{{url_for('inspections')}}">← Inspection</a><a class="btn" href="{{url_for('dashboard')}}">Dashboard</a></div></div>
+<div class="card"><h2 style="margin-top:0">Supporting Staff</h2><p class="muted">Open a staff folder to see the PPAs assigned to that officer. Each PPA contains separate Present and Absent records.</p></div>
+<div class="grid">
+{% for s in staff_rows %}
+<a class="folder" href="{{url_for('inspection_report_staff',staff_id=s.id)}}">
+<div class="folder-icon">📁</div><h2 style="margin:8px 0 4px">{{s.full_name}}</h2><div class="muted">{{s.ppa_count}} assigned PPA(s)</div>
+<div style="margin-top:12px"><span class="pill present">Present {{s.present_count}}</span><span class="pill absent">Absent {{s.absent_count}}</span><span class="pill pending">Pending {{s.pending_count}}</span></div>
+<div class="muted" style="margin-top:12px">{{s.corps_count}} active Corps Members</div>
+</a>
+{% else %}<div class="card"><b>No active Supporting Staff assignments found.</b></div>{% endfor %}
+</div></div></body></html>
