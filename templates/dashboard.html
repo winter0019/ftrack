@@ -1,4 +1,279 @@
-{% extends "base.html" %}{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}{% block content %}
+{% extends "base.html" %}
+{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}
+
+{% block content %}
+
+{% if current_user['role'] == 'Supporting Staff' %}
+
+<div class="head">
+    <div>
+        <small>REGISTRY & DELIVERY CONTROL</small>
+        <h1>Supporting Staff Dashboard</h1>
+        <p>Register files received from LGIs, track zonal review, and confirm physical delivery to the assigned Secretariat branch.</p>
+    </div>
+    <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+</div>
+
+<div class="stats">
+    <div class="stat">
+        <small>Files Registered</small>
+        <strong>{{ stats.get('Total',0) }}</strong>
+    </div>
+    <div class="stat">
+        <small>Awaiting Zonal Review</small>
+        <strong>{{ stats.get('Received',0) }}</strong>
+    </div>
+    <div class="stat">
+        <small>Awaiting Physical Submission</small>
+        <strong>{{ stats.get('Forwarded',0) }}</strong>
+    </div>
+    <div class="stat">
+        <small>Submitted</small>
+        <strong>{{ stats.get('Submitted',0) }}</strong>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Secretariat Delivery Queue</h2>
+    <div class="branches">
+        {% for b,n in branches %}
+        <a href="{{ url_for('files_page',branch=b) }}">
+            <b>{{ b }}</b>
+            <span>{{ n }} file{{ '' if n==1 else 's' }}</span>→
+        </a>
+        {% else %}
+        <div class="card">No branch records yet.</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2>Recent Records</h2>
+    <div class="table">
+        <table>
+            <tr>
+                <th>File ID</th>
+                <th>Document</th>
+                <th>Source</th>
+                <th>Location</th>
+                <th>Status</th>
+            </tr>
+
+            {% for r in recent %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('detail',file_id=r['file_id']) }}">
+                        {{ r['file_id'] }}
+                    </a>
+                </td>
+                <td>
+                    <b>{{ r['title'] }}</b>
+                    <small>{{ r['reference_no'] or 'No reference number' }}</small>
+                </td>
+                <td>{{ r['lga'] }}</td>
+                <td>{{ r['current_location'] }}</td>
+                <td>
+                    <span class="badge {{ r['status']|lower }}">
+                        {{ r['status'] }}
+                    </span>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">No records yet.</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% else %}
+
+<div class="head">
+    <div>
+        <small>OPERATIONS CONTROL</small>
+        <h1>
+            {% if current_user['role'] == 'Zonal Inspector' %}
+                Zonal Inspector Dashboard
+            {% else %}
+                File Movement Dashboard
+            {% endif %}
+        </h1>
+        <p>
+            {% if current_user['role'] == 'Zonal Inspector' %}
+                Monitor file movement, PPA inspections, Corps Member attendance and reports submitted for review.
+            {% else %}
+                Monitor documents received from LGIs and their movement to the State Secretariat.
+            {% endif %}
+        </p>
+    </div>
+    <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+</div>
+
+<div class="stats">
+    {% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}
+    <div class="stat">
+        <small>{{ k }}</small>
+        <strong>{{ stats.get(k,0) }}</strong>
+    </div>
+    {% endfor %}
+</div>
+
+
+{% if current_user['role'] in ['Administrator','Zonal Inspector'] %}
+
+<!-- INSPECTION & PPA MONITORING -->
+<div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;">
+
+        <div>
+            <small style="color:#12865f;font-weight:800;letter-spacing:.08em;">
+                FIELD MONITORING
+            </small>
+
+            <h2 style="margin:5px 0 6px;">
+                Inspection & PPA Monitoring
+            </h2>
+
+            <p style="margin:0;color:#6b7c84;">
+                Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.
+            </p>
+        </div>
+
+        <a class="cta" href="{{ url_for('inspections') }}">
+            Open Inspection →
+        </a>
+
+    </div>
+
+    <div class="stats" style="margin-top:20px;">
+
+        <div class="stat">
+            <small>PPA Monitoring</small>
+            <strong>Active</strong>
+        </div>
+
+        <div class="stat">
+            <small>Corps Member Records</small>
+            <strong>Live</strong>
+        </div>
+
+        <div class="stat">
+            <small>Inspection Reports</small>
+            <strong>Review</strong>
+        </div>
+
+        <div class="stat">
+            <small>Field Staff</small>
+            <strong>Assigned</strong>
+        </div>
+
+    </div>
+</div>
+
+
+<!-- QUICK INSPECTION ACTIONS -->
+<div class="section">
+    <h2>Inspection Quick Actions</h2>
+
+    <div class="branches">
+
+        <a href="{{ url_for('inspections') }}">
+            <b>Inspection Management</b>
+            <span>PPAs & assignments</span>→
+        </a>
+
+        <a href="{{ url_for('inspections') }}">
+            <b>PPA Monitoring</b>
+            <span>Open PPA records</span>→
+        </a>
+
+        {% if current_user['role'] == 'Administrator' %}
+        <a href="{{ url_for('inspection_import') }}">
+            <b>Import Corps Members</b>
+            <span>CSV / XLSX</span>→
+        </a>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endif %}
+
+
+<div class="section">
+    <h2>State Secretariat Branches</h2>
+
+    <div class="branches">
+        {% for b,n in branches %}
+        <a href="{{ url_for('files_page',branch=b) }}">
+            <b>{{ b }}</b>
+            <span>{{ n }} file{{ '' if n==1 else 's' }}</span>→
+        </a>
+        {% else %}
+        <div class="card">No branch records yet.</div>
+        {% endfor %}
+    </div>
+</div>
+
+
+<div class="section">
+    <h2>Recent Records</h2>
+
+    <div class="table">
+        <table>
+
+            <tr>
+                <th>File ID</th>
+                <th>Document</th>
+                <th>Source</th>
+                <th>Location</th>
+                <th>Status</th>
+            </tr>
+
+            {% for r in recent %}
+            <tr>
+
+                <td>
+                    <a href="{{ url_for('detail',file_id=r['file_id']) }}">
+                        {{ r['file_id'] }}
+                    </a>
+                </td>
+
+                <td>
+                    <b>{{ r['title'] }}</b>
+                    <small>
+                        {{ r['reference_no'] or 'No reference number' }}
+                    </small>
+                </td>
+
+                <td>{{ r['lga'] }}</td>
+
+                <td>{{ r['current_location'] }}</td>
+
+                <td>
+                    <span class="badge {{ r['status']|lower }}">
+                        {{ r['status'] }}
+                    </span>
+                </td>
+
+            </tr>
+
+            {% else %}
+
+            <tr>
+                <td colspan="5">No records yet.</td>
+            </tr>
+
+            {% endfor %}
+
+        </table>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}{% extends "base.html" %}{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}{% block content %}
 {% if current_user['role'] == 'Supporting Staff' %}
 <div class="head"><div><small>REGISTRY & DELIVERY CONTROL</small><h1>Supporting Staff Dashboard</h1><p>Register files received from LGIs, track zonal review, and confirm physical delivery to the assigned Secretariat branch.</p></div><a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a></div>
 <div class="stats">
