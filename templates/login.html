@@ -1,25 +1,252 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
 <title>Sign In | NYSC Katsina Zonal Office</title>
+
 <style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f3f7f5;font-family:Segoe UI,Arial,sans-serif;color:#172832;display:grid;place-items:center;padding:24px}
-.box{width:min(430px,100%);background:#fff;border:1px solid #dfe8e5;border-radius:20px;box-shadow:0 18px 50px #123c2a18;overflow:hidden}
-.head{background:#07543f;color:#fff;padding:30px}.logo{width:58px;height:58px;border-radius:15px;background:#0b9b68;display:grid;place-items:center;font-weight:800;margin-bottom:18px}.head h1{font-size:23px;margin:0 0 5px}.head p{margin:0;color:#c3ddd4;font-size:14px}
-.body{padding:28px}.label{display:block;font-weight:700;font-size:13px;margin:0 0 7px}.field{width:100%;padding:13px 14px;border:1px solid #cfdcd7;border-radius:11px;font-size:15px;margin-bottom:18px;outline:none}.field:focus{border-color:#0b9b68;box-shadow:0 0 0 3px #0b9b6815}
-.password{position:relative}.password .field{padding-right:70px}.show{position:absolute;right:10px;top:7px;border:0;background:transparent;color:#07543f;font-weight:700;padding:8px;cursor:pointer}
-.btn{width:100%;border:0;background:#07543f;color:#fff;border-radius:11px;padding:14px;font-size:15px;font-weight:800;cursor:pointer}.btn:hover{background:#064936}
-.alert{padding:11px 13px;border-radius:10px;background:#fff1f0;color:#a1261a;margin-bottom:16px;font-size:13px}.success{background:#e9f7f1;color:#14734d}
-.foot{text-align:center;color:#78888e;font-size:12px;margin-top:20px}
-</style></head><body><div class="box">
-<div class="head"><div class="logo">NYSC</div><h1>Katsina Zonal Office</h1><p>File Movement Register · Official Sign In</p></div>
-<div class="body">
-{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="alert {% if category=='success' %}success{% endif %}">{{message}}</div>{% endfor %}{% endwith %}
-<form method="post">
-<label class="label">Username</label><input class="field" name="username" autocomplete="username" required autofocus>
-<label class="label">Password</label><div class="password"><input id="password" class="field" type="password" name="password" autocomplete="current-password" required><button class="show" type="button" onclick="togglePassword()">Show</button></div>
-<button class="btn" type="submit">Sign In</button>
-</form>
-<div class="foot">Authorized NYSC officials only</div>
-</div></div>
-<script>function togglePassword(){const p=document.getElementById('password'),b=document.querySelector('.show');p.type=p.type==='password'?'text':'password';b.textContent=p.type==='password'?'Show':'Hide'}</script>
-</body></html>
+*{box-sizing:border-box}
+
+body{
+    margin:0;
+    min-height:100vh;
+    background:#f3f7f5;
+    font-family:Segoe UI,Arial,sans-serif;
+    color:#172832;
+    display:grid;
+    place-items:center;
+    padding:24px
+}
+
+.box{
+    width:min(430px,100%);
+    background:#fff;
+    border:1px solid #dfe8e5;
+    border-radius:20px;
+    box-shadow:0 18px 50px #123c2a18;
+    overflow:hidden
+}
+
+.head{
+    background:#07543f;
+    color:#fff;
+    padding:30px
+}
+
+/* NYSC logo */
+.logo{
+    width:78px;
+    height:78px;
+    object-fit:contain;
+    display:block;
+    margin-bottom:18px
+}
+
+.head h1{
+    font-size:23px;
+    margin:0 0 5px
+}
+
+.head p{
+    margin:0;
+    color:#c3ddd4;
+    font-size:14px
+}
+
+.body{
+    padding:28px
+}
+
+.label{
+    display:block;
+    font-weight:700;
+    font-size:13px;
+    margin:0 0 7px
+}
+
+.field{
+    width:100%;
+    padding:13px 14px;
+    border:1px solid #cfdcd7;
+    border-radius:11px;
+    font-size:15px;
+    margin-bottom:18px;
+    outline:none
+}
+
+.field:focus{
+    border-color:#0b9b68;
+    box-shadow:0 0 0 3px #0b9b6815
+}
+
+.password{
+    position:relative
+}
+
+.password .field{
+    padding-right:70px
+}
+
+.show{
+    position:absolute;
+    right:10px;
+    top:7px;
+    border:0;
+    background:transparent;
+    color:#07543f;
+    font-weight:700;
+    padding:8px;
+    cursor:pointer
+}
+
+.btn{
+    width:100%;
+    border:0;
+    background:#07543f;
+    color:#fff;
+    border-radius:11px;
+    padding:14px;
+    font-size:15px;
+    font-weight:800;
+    cursor:pointer
+}
+
+.btn:hover{
+    background:#064936
+}
+
+.alert{
+    padding:11px 13px;
+    border-radius:10px;
+    background:#fff1f0;
+    color:#a1261a;
+    margin-bottom:16px;
+    font-size:13px
+}
+
+.success{
+    background:#e9f7f1;
+    color:#14734d
+}
+
+.foot{
+    text-align:center;
+    color:#78888e;
+    font-size:12px;
+    margin-top:20px
+}
+
+/* Mobile adjustment */
+@media(max-width:480px){
+    body{
+        padding:14px
+    }
+
+    .head{
+        padding:26px
+    }
+
+    .logo{
+        width:70px;
+        height:70px
+    }
+
+    .body{
+        padding:24px
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+
+    <div class="head">
+
+        <img
+            src="{{ url_for('static', filename='images/nysc-logo.png') }}"
+            alt="NYSC Logo"
+            class="logo"
+        >
+
+        <h1>Katsina Zonal Office</h1>
+
+        <p>File Movement Register · Official Sign In</p>
+
+    </div>
+
+    <div class="body">
+
+        {% with messages=get_flashed_messages(with_categories=true) %}
+            {% for category,message in messages %}
+                <div class="alert {% if category=='success' %}success{% endif %}">
+                    {{message}}
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="post">
+
+            <label class="label">Username</label>
+
+            <input
+                class="field"
+                name="username"
+                autocomplete="username"
+                required
+                autofocus
+            >
+
+            <label class="label">Password</label>
+
+            <div class="password">
+
+                <input
+                    id="password"
+                    class="field"
+                    type="password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                >
+
+                <button
+                    class="show"
+                    type="button"
+                    onclick="togglePassword()"
+                >
+                    Show
+                </button>
+
+            </div>
+
+            <button class="btn" type="submit">
+                Sign In
+            </button>
+
+        </form>
+
+        <div class="foot">
+            Authorized NYSC officials only
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+function togglePassword(){
+    const p=document.getElementById('password');
+    const b=document.querySelector('.show');
+
+    p.type=p.type==='password'?'text':'password';
+
+    b.textContent=p.type==='password'?'Show':'Hide';
+}
+</script>
+
+</body>
+</html>
