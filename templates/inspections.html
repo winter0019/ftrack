@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8"><title>Inspection Management</title>
 <style>body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;color:#1f2937}.wrap{max-width:1200px;margin:30px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:18px;box-shadow:0 2px 8px #00000008}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}input,select,textarea,button{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d1d5db;border-radius:8px}button{background:#111827;color:white;cursor:pointer}.btn{display:inline-block;padding:9px 13px;background:#111827;color:white;border-radius:7px;text-decoration:none;font-size:14px}.muted{color:#6b7280}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:14px}.badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#eef2ff}.danger{background:#991b1b}.success{background:#166534}</style></head>
 <body><div class="wrap">
-<h1>Inspection Management</h1>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px"><h1 style="margin:0">Inspection Management</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="{{url_for('dashboard')}}">← Dashboard</a><a class="btn" href="{{url_for('reports')}}">Reports</a></div></div>
 <p class="muted">PPA/Establishment assignment and corps-member attendance inspection.</p>
 {% with messages=get_flashed_messages(with_categories=true) %}{% for cat,msg in messages %}<div class="card"><b>{{cat|title}}:</b> {{msg}}</div>{% endfor %}{% endwith %}
 {% if mode=='management' %}
