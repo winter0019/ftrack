@@ -828,7 +828,14 @@ def inspections():
 @app.route("/inspection/import",methods=["GET","POST"])
 @inspection_management_required
 def inspection_import():
-    if request.method=="POST":
+    """Fast, PostgreSQL-safe Corps Member importer.
+
+    The previous implementation performed several database round-trips for every
+    row.  With a 2,000+ row zonal workbook that could exceed Gunicorn's request
+    timeout.  This version validates rows in memory, bulk-creates missing PPAs,
+    then performs batched PostgreSQL upserts for Corps Members.
+    """
+    if request.method == "POST":
         uploads=[u for u in request.files.getlist("corps_file") if u and u.filename]
         selected_lga=(request.form.get("lga") or "").strip()
         if not uploads:
@@ -837,63 +844,164 @@ def inspection_import():
         if selected_lga and selected_lga not in LGAS:
             flash("Please select a valid LGA.","error")
             return redirect(url_for("inspection_import"))
+
         try:
-            c=db(); new_count=updated=errors=processed=0; error_rows=[]; t=now()
+            # -------------------------------------------------------------
+            # 1. Read and validate everything before opening the DB write path.
+            # -------------------------------------------------------------
+            valid=[]
+            errors=0
+            processed=0
+            error_rows=[]
+
             for upload in uploads:
                 filename=upload.filename
                 try:
                     rows=_read_corps_upload(upload)
                 except Exception as exc:
-                    errors+=1
+                    errors += 1
                     error_rows.append(f"{filename}: {exc}")
-                    continue
-                if not rows:
                     continue
 
                 for idx,row in enumerate(rows,start=2):
                     fields=_legacy_corps_fields(row,filename,selected_lga)
+                    processed += 1
                     state,name,ppa,lga=(fields["state"],fields["name"],fields["ppa"],fields["lga"])
-                    processed+=1
-                    if not state or not name or not ppa or not lga:
-                        errors+=1
-                        missing=[]
-                        if not state: missing.append("State Code")
-                        if not name: missing.append("Name")
-                        if not ppa: missing.append("PPA/Establishment")
-                        if not lga: missing.append("LGA")
+                    missing=[]
+                    if not state: missing.append("State Code")
+                    if not name: missing.append("Name")
+                    if not ppa: missing.append("PPA/Establishment")
+                    if not lga: missing.append("LGA")
+                    if missing:
+                        errors += 1
                         error_rows.append(f"{filename} row {idx}: {', '.join(missing)} required")
                         continue
                     if lga not in LGAS:
-                        errors+=1
+                        errors += 1
                         error_rows.append(f"{filename} row {idx}: Invalid LGA '{lga}'")
                         continue
-                    try:
-                        p=c.execute("SELECT id FROM ppa_establishments WHERE lower(name)=lower(%s) AND lower(lga)=lower(%s)",(ppa,lga)).fetchone()
-                        if p:
-                            ppa_id=p["id"]
-                        else:
-                            ppa_id=c.execute("""INSERT INTO ppa_establishments(name,lga,active,created_by,created_at)
-                                VALUES(%s,%s,1,%s,%s) RETURNING id""",(ppa,lga,current_user()["id"],t)).fetchone()["id"]
-                        existing=c.execute("SELECT id FROM corps_members WHERE state_code=%s",(state,)).fetchone()
-                        vals=(name,fields["gender"],fields["discipline"],ppa_id,fields["batch"],fields["stream"],fields["phone"],fields["status"],t)
-                        if existing:
-                            c.execute("""UPDATE corps_members SET full_name=%s,gender=%s,discipline=%s,ppa_id=%s,batch=%s,stream=%s,phone=%s,status=%s,updated_at=%s WHERE state_code=%s""",vals+(state,))
-                            updated+=1
-                        else:
-                            c.execute("""INSERT INTO corps_members(state_code,full_name,gender,discipline,ppa_id,batch,stream,phone,status,created_at,updated_at)
-                                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",(state,)+vals)
-                            new_count+=1
-                    except Exception as exc:
-                        errors+=1
-                        error_rows.append(f"{filename} row {idx}: {exc}")
-            c.commit(); c.close()
-            msg=f"Import completed: {processed} rows processed, {new_count} new, {updated} updated, {errors} errors."
+                    valid.append(fields)
+
+            if not valid:
+                flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.","error")
+                if error_rows:
+                    flash(" | ".join(error_rows[:8]),"error")
+                return redirect(url_for("inspection_import"))
+
+            # A user may upload overlapping batch files. PostgreSQL cannot
+            # update the same ON CONFLICT key twice within one INSERT statement,
+            # so collapse duplicate State Codes before the bulk upsert. The last
+            # valid occurrence wins, while `processed` still reports every row.
+            deduped={}
+            for f in valid:
+                deduped[f["state"].strip()]=f
+            valid=list(deduped.values())
+
+            c=db()
+            t=now()
+            user_id=current_user()["id"]
+
+            # -------------------------------------------------------------
+            # 2. Bulk-create PPAs. UNIQUE(name,lga) prevents duplicates.
+            # -------------------------------------------------------------
+            ppa_keys=[]
+            seen_ppas=set()
+            for f in valid:
+                key=(f["ppa"].strip(),f["lga"].strip())
+                if key not in seen_ppas:
+                    seen_ppas.add(key)
+                    ppa_keys.append(key)
+
+            if ppa_keys:
+                placeholders=",".join(["(%s,%s,1,%s,%s)"]*len(ppa_keys))
+                params=[]
+                for name,lga in ppa_keys:
+                    params.extend([name,lga,user_id,t])
+                c.execute(f"""
+                    INSERT INTO ppa_establishments(name,lga,active,created_by,created_at)
+                    VALUES {placeholders}
+                    ON CONFLICT (name,lga) DO NOTHING
+                """,params)
+
+            # Fetch all relevant PPA ids in one query.
+            ppa_where=",".join(["(%s,%s)"]*len(ppa_keys))
+            ppa_params=[]
+            for name,lga in ppa_keys:
+                ppa_params.extend([name,lga])
+            ppa_rows=c.execute(f"""
+                SELECT id,name,lga FROM ppa_establishments
+                WHERE (name,lga) IN ({ppa_where})
+            """,ppa_params).fetchall()
+            ppa_map={(r["name"].lower(),r["lga"].lower()):r["id"] for r in ppa_rows}
+
+            # -------------------------------------------------------------
+            # 3. Determine new vs existing State Codes with one query.
+            # -------------------------------------------------------------
+            states=[]
+            seen_states=set()
+            for f in valid:
+                st=f["state"].strip()
+                if st not in seen_states:
+                    seen_states.add(st)
+                    states.append(st)
+
+            existing_states=set()
+            # PostgreSQL has a practical parameter limit; 2,458 is well below
+            # it, but chunking keeps this safe for larger future imports.
+            for i in range(0,len(states),500):
+                part=states[i:i+500]
+                ph=",".join(["%s"]*len(part))
+                found=c.execute(f"SELECT state_code FROM corps_members WHERE state_code IN ({ph})",part).fetchall()
+                existing_states.update(r["state_code"] for r in found)
+
+            # -------------------------------------------------------------
+            # 4. Bulk upsert Corps Members in chunks. Each chunk is one SQL
+            # statement, instead of 4+ network round-trips per row.
+            # -------------------------------------------------------------
+            new_count=sum(1 for f in valid if f["state"] not in existing_states)
+            updated_count=sum(1 for f in valid if f["state"] in existing_states)
+
+            columns=("state_code,full_name,gender,discipline,ppa_id,batch,stream,phone,status,created_at,updated_at")
+            for offset in range(0,len(valid),500):
+                chunk=valid[offset:offset+500]
+                values=[]
+                params=[]
+                for f in chunk:
+                    ppa_id=ppa_map.get((f["ppa"].strip().lower(),f["lga"].strip().lower()))
+                    if not ppa_id:
+                        raise RuntimeError(f"PPA could not be resolved: {f['ppa']} ({f['lga']})")
+                    values.append("(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+                    params.extend([
+                        f["state"],f["name"],f["gender"],f["discipline"],ppa_id,
+                        f["batch"],f["stream"],f["phone"],f["status"],t,t
+                    ])
+                c.execute(f"""
+                    INSERT INTO corps_members({columns})
+                    VALUES {','.join(values)}
+                    ON CONFLICT (state_code) DO UPDATE SET
+                        full_name=EXCLUDED.full_name,
+                        gender=EXCLUDED.gender,
+                        discipline=EXCLUDED.discipline,
+                        ppa_id=EXCLUDED.ppa_id,
+                        batch=EXCLUDED.batch,
+                        stream=EXCLUDED.stream,
+                        phone=EXCLUDED.phone,
+                        status=EXCLUDED.status,
+                        updated_at=EXCLUDED.updated_at
+                """,params)
+
+            c.commit()
+            c.close()
+
+            msg=f"Import completed: {processed} rows processed, {new_count} new, {updated_count} updated, {errors} errors."
             flash(msg,"success" if errors==0 else "error")
             if error_rows:
                 flash(" | ".join(error_rows[:8]),"error")
+
         except Exception as exc:
             try:
-                c.rollback(); c.close()
+                c.rollback()
+                c.close()
             except Exception:
                 pass
             flash(f"Import failed: {exc}","error")
