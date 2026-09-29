@@ -64,7 +64,34 @@ def integrate_inspection_ui(response):
         if request.path in ("/login", "/setup") or request.path.startswith("/admin/db-inspection"):
             return response
         html=response.get_data(as_text=True)
+
+        # Show a clear confirmation after a Supporting Staff member successfully
+        # confirms physical delivery of a file. The detail template belongs to
+        # the core FileTrack UI, so this enhancement avoids replacing it.
+        if request.args.get("submitted") == "1" and request.path.startswith("/file/"):
+            confirmation = (
+                '<div data-filetrack-submission-confirmed="1" style="margin:18px 0;padding:16px 18px;'
+                'border:1px solid #86efac;border-left:5px solid #16a34a;border-radius:12px;'
+                'background:#f0fdf4;color:#166534;font-family:Arial,sans-serif;">'
+                '<div style="font-weight:800;font-size:17px;margin-bottom:4px;">'
+                '✓ Physical Submission Confirmed</div>'
+                '<div>The file has been recorded as physically submitted to the selected Secretariat branch.</div>'
+                '</div>'
+            )
+            html = html.replace('</main>', confirmation + '</main>', 1) if '</main>' in html else confirmation + html
+            confirmation_script = (
+                '<script>document.addEventListener("DOMContentLoaded",function(){'
+                'document.querySelectorAll("button,input[type=submit]").forEach(function(el){'
+                'var t=(el.innerText||el.value||"").trim().toLowerCase();'
+                'if(t.indexOf("confirm physical submission")!==-1){'
+                'el.disabled=true;el.style.opacity=".65";el.style.cursor="not-allowed";'
+                'if(el.tagName.toLowerCase()==="input")el.value="✓ Physical Submission Confirmed";'
+                'else el.innerText="✓ Physical Submission Confirmed";}});});</script>'
+            )
+            html = html.replace('</body>', confirmation_script + '</body>', 1) if '</body>' in html else html + confirmation_script
+
         if 'data-filetrack-inspection="1"' in html:
+            response.set_data(html)
             return response
 
         nav_link='<a href="/inspections" data-filetrack-inspection="1" style="margin-left:18px;font-weight:700;text-decoration:none;color:inherit;">Inspection</a>'
@@ -612,7 +639,7 @@ def acknowledge(file_id):
      f"Physical file submitted to {m['to_location']}",t))
     c.commit(); c.close()
     flash(f"Physical submission of {file_id} to {m['to_location']} confirmed.","success")
-    return redirect(url_for("detail",file_id=file_id))
+    return redirect(url_for("detail",file_id=file_id, submitted=1))
 
 @app.route("/return/<file_id>",methods=["POST"])
 @movement_required
