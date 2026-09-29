@@ -1,41 +1,208 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
 <title>{% block title %}NYSC Katsina Zonal Office{% endblock %}</title>
+
 <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+
 <style>
-.account{display:flex;align-items:center;gap:10px;margin-left:10px;padding-left:14px;border-left:1px solid rgba(255,255,255,.22)}
-.account-text{display:flex;flex-direction:column;line-height:1.15;text-align:right}.account-text strong{font-size:13px}.account-text small{font-size:11px;opacity:.75;margin-top:3px}
-.account a{color:#fff;text-decoration:none;font-size:12px}.logout{padding:7px 10px;border:1px solid rgba(255,255,255,.3);border-radius:8px}
-.admin-link{font-size:13px!important;font-weight:700}
-.mobile-account{display:none}
-@media(max-width:760px){.account{display:none}.mobile-account{display:block;padding:12px 0;border-top:1px solid var(--line);margin-top:8px}.mobile-account strong{display:block}.mobile-account small{color:var(--muted);display:block;margin:3px 0 8px}.mobile-account a{margin-right:12px}}
+.account{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:10px;
+  padding-left:14px;
+  border-left:1px solid rgba(255,255,255,.22)
+}
+
+.account-text{
+  display:flex;
+  flex-direction:column;
+  line-height:1.15;
+  text-align:right
+}
+
+.account-text strong{
+  font-size:13px
+}
+
+.account-text small{
+  font-size:11px;
+  opacity:.75;
+  margin-top:3px
+}
+
+.account a{
+  color:#fff;
+  text-decoration:none;
+  font-size:12px
+}
+
+.logout{
+  padding:7px 10px;
+  border:1px solid rgba(255,255,255,.3);
+  border-radius:8px
+}
+
+.admin-link{
+  font-size:13px!important;
+  font-weight:700
+}
+
+.mobile-account{
+  display:none
+}
+
+/* NYSC Logo */
+.nysc-logo{
+  object-fit:contain;
+  display:block;
+}
+
+.nav-logo{
+  width:46px;
+  height:46px;
+  flex-shrink:0;
+}
+
+@media(max-width:760px){
+  .account{
+    display:none
+  }
+
+  .mobile-account{
+    display:block;
+    padding:12px 0;
+    border-top:1px solid var(--line);
+    margin-top:8px
+  }
+
+  .mobile-account strong{
+    display:block
+  }
+
+  .mobile-account small{
+    color:var(--muted);
+    display:block;
+    margin:3px 0 8px
+  }
+
+  .mobile-account a{
+    margin-right:12px
+  }
+
+  .nav-logo{
+    width:40px;
+    height:40px;
+  }
+}
 </style>
 </head>
+
 <body>
+
 <header class="top">
-  <a class="brand" href="{{ url_for('dashboard') }}"><b>NYSC</b><span><strong>Katsina Zonal Office</strong><small>File Movement Register</small></span></a>
-  <button class="menu" aria-label="Open navigation" onclick="document.body.classList.toggle('open')">☰</button>
+
+  <a class="brand" href="{{ url_for('dashboard') }}">
+
+    <img
+      src="{{ url_for('static', filename='images/nysc-logo.png') }}"
+      alt="NYSC Logo"
+      class="nysc-logo nav-logo"
+    >
+
+    <span>
+      <strong>Katsina Zonal Office</strong>
+      <small>File Movement Register</small>
+    </span>
+
+  </a>
+
+  <button
+    class="menu"
+    aria-label="Open navigation"
+    onclick="document.body.classList.toggle('open')"
+  >☰</button>
+
   <nav>
+
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
+
     <a href="{{ url_for('files_page') }}">File Register</a>
-    <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
-    {% if current_user and current_user['role']=='Administrator' %}<a class="admin-link" href="{{ url_for('users') }}">Officials</a>{% endif %}
+
+    <a class="cta" href="{{ url_for('receive') }}">
+      ＋ Receive File
+    </a>
+
+    {% if current_user and current_user['role']=='Administrator' %}
+      <a class="admin-link" href="{{ url_for('users') }}">
+        Officials
+      </a>
+    {% endif %}
+
     {% if current_user %}
     <div class="account">
-      <div class="account-text"><strong>{{ current_user['full_name'] }}</strong><small>{{ current_user['role'] }}{% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}</small></div>
-      <a class="logout" href="{{ url_for('logout') }}">Logout</a>
+
+      <div class="account-text">
+        <strong>{{ current_user['full_name'] }}</strong>
+
+        <small>
+          {{ current_user['role'] }}
+          {% if current_user['office'] %}
+            · {{ current_user['office'] }}
+          {% endif %}
+        </small>
+      </div>
+
+      <a class="logout" href="{{ url_for('logout') }}">
+        Logout
+      </a>
+
     </div>
     {% endif %}
+
   </nav>
 </header>
+
 <main class="wrap">
+
 {% if current_user %}
-<div class="mobile-account"><strong>{{ current_user['full_name'] }}</strong><small>{{ current_user['role'] }}{% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}</small><a href="{{ url_for('logout') }}">Logout</a>{% if current_user['role']=='Administrator' %}<a href="{{ url_for('users') }}">Manage Officials</a>{% endif %}</div>
+<div class="mobile-account">
+
+  <strong>{{ current_user['full_name'] }}</strong>
+
+  <small>
+    {{ current_user['role'] }}
+    {% if current_user['office'] %}
+      · {{ current_user['office'] }}
+    {% endif %}
+  </small>
+
+  <a href="{{ url_for('logout') }}">Logout</a>
+
+  {% if current_user['role']=='Administrator' %}
+    <a href="{{ url_for('users') }}">Manage Officials</a>
+  {% endif %}
+
+</div>
 {% endif %}
-{% with ms=get_flashed_messages(with_categories=true) %}{% for c,m in ms %}<div class="flash {{ c }}">✓ &nbsp;{{ m }}</div>{% endfor %}{% endwith %}
+
+{% with ms=get_flashed_messages(with_categories=true) %}
+  {% for c,m in ms %}
+    <div class="flash {{ c }}">✓ &nbsp;{{ m }}</div>
+  {% endfor %}
+{% endwith %}
+
 {% block content %}{% endblock %}
+
 </main>
-<footer>NYSC Katsina Zonal Office · File Movement Register · Phase 2</footer>
-</body></html>
+
+<footer>
+  NYSC Katsina Zonal Office · File Movement Register · Phase 2
+</footer>
+
+</body>
+</html>
