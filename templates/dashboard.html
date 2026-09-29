@@ -189,7 +189,7 @@
         </a>
 
         {% if current_user['role'] == 'Administrator' %}
-        <a href="{{ url_for('inspection_import') }}">
+        <a href="/inspection/import">
             <b>Import Corps Members</b>
             <span>CSV / XLSX</span>→
         </a>
@@ -272,24 +272,3 @@
 </div>
 
 {% endif %}
-
-{% endblock %}{% extends "base.html" %}{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}{% block content %}
-{% if current_user['role'] == 'Supporting Staff' %}
-<div class="head"><div><small>REGISTRY & DELIVERY CONTROL</small><h1>Supporting Staff Dashboard</h1><p>Register files received from LGIs, track zonal review, and confirm physical delivery to the assigned Secretariat branch.</p></div><a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a></div>
-<div class="stats">
-<div class="stat"><small>Files Registered</small><strong>{{ stats.get('Total',0) }}</strong></div>
-<div class="stat"><small>Awaiting Zonal Review</small><strong>{{ stats.get('Received',0) }}</strong></div>
-<div class="stat"><small>Awaiting Physical Submission</small><strong>{{ stats.get('Forwarded',0) }}</strong></div>
-<div class="stat"><small>Submitted</small><strong>{{ stats.get('Submitted',0) }}</strong></div>
-</div>
-<div class="section"><h2>Secretariat Delivery Queue</h2><div class="branches">{% for b,n in branches %}<a href="{{ url_for('files_page',branch=b) }}"><b>{{ b }}</b><span>{{ n }} file{{ '' if n==1 else 's' }}</span>→</a>{% else %}<div class="card">No branch records yet.</div>{% endfor %}</div></div>
-<div class="section"><h2>Recent Records</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td></tr>{% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}</table></div></div>
-{% else %}
-<div class="head"><div><small>OPERATIONS CONTROL</small><h1>File Movement Dashboard</h1><p>Monitor documents received from LGIs and their movement to the State Secretariat.</p></div><a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a></div>
-<div class="stats">
-{% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}<div class="stat"><small>{{ k }}</small><strong>{{ stats.get(k,0) }}</strong></div>{% endfor %}
-</div>
-<div class="section"><h2>State Secretariat Branches</h2><div class="branches">{% for b,n in branches %}<a href="{{ url_for('files_page',branch=b) }}"><b>{{ b }}</b><span>{{ n }} file{{ '' if n==1 else 's' }}</span>→</a>{% else %}<div class="card">No branch records yet.</div>{% endfor %}</div></div>
-<div class="section"><h2>Recent Records</h2><div class="table"><table><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>{% for r in recent %}<tr><td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td><td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td><td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td><td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td></tr>{% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}</table></div></div>
-{% endif %}
-{% endblock %}
