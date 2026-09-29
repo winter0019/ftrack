@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Import Corps Members</title>
+<style>
+body{font-family:Arial;background:#f5f7fb;margin:0}.wrap{max-width:980px;margin:40px auto;padding:20px}
+.card{background:white;padding:25px;border-radius:12px;border:1px solid #e5e7eb;margin-bottom:20px}
+input,select,button{padding:11px;width:100%;box-sizing:border-box;border-radius:8px;border:1px solid #d1d5db}
+button{background:#111827;color:white;margin-top:15px}.muted{color:#6b7280}code{background:#f3f4f6;padding:3px 5px}
+label{display:block;font-weight:600;margin:15px 0 7px}
+</style></head>
+<body><div class="wrap">
+<div class="card">
+<h1>Import Corps Members</h1>
+<p class="muted">This importer now accepts the NYSC Excel format used by the Zonal Office.</p>
+<form method="post" enctype="multipart/form-data">
+<label>Excel / CSV files</label>
+<input type="file" name="corps_file" accept=".csv,.xlsx" multiple required>
+<label>LGA (optional)</label>
+<select name="lga">
+<option value="">Auto-detect from filename</option>
+{% for lga in lgas %}<option value="{{lga}}">{{lga}}</option>{% endfor %}
+</select>
+<button>Import / Update Records</button>
+</form>
+</div>
+<div class="card">
+<h2>Accepted NYSC workbook format</h2>
+<p>The system reads the <b>Expected</b> sheet when it exists. It also accepts the consolidated <b>All Corps Members</b> sheet in <code>Katsina_Zonal_Corps_Members_By_LGA.xlsx</code>.</p>
+<p>For the consolidated master, it maps <code>State Code</code> → State Code, <code>Name</code> → Name, <code>Establishment</code> → PPA/Establishment, and <code>LGA + Component</code> → the seven zonal LGAs.</p>
+<p>For raw NYSC downloads, it maps <code>Statecode</code> → State Code, <code>Surname + Othernames</code> → Name, and <code>Company</code> → PPA/Establishment.</p>
+<p><code>Course</code>, <code>Gender</code>, <code>GSMNO</code>, <code>Stream</code> and the batch in the State Code are also imported.</p>
+<p><b>Example:</b> <code>rimiC.xlsx</code>, <code>rimiA.xlsx</code> and <code>rimi.xlsx</code> are automatically treated as <b>Rimi</b>. The A/C/unsuffixed suffix is treated as the NYSC batch, not as the LGA.</p>
+<p>For <code>katsinaC.xlsx</code>, <code>katsinaA.xlsx</code> and <code>katsina.xlsx</code>, select <b>Katsina A</b> or <b>Katsina B</b> because the filename alone does not identify the component. The consolidated zonal master already contains the Component column, so no manual selection is needed.</p>
+<p>Existing State Codes are updated; new State Codes are inserted. Existing PostgreSQL data is not deleted or reset.</p>
+<p><a href="{{url_for('inspections')}}">← Back to Inspection Management</a></p>
+</div>
+{% with messages=get_flashed_messages(with_categories=true) %}
+{% for cat,msg in messages %}<div class="card"><b>{{cat|title}}:</b> {{msg}}</div>{% endfor %}
+{% endwith %}
+</div></body></html>
