@@ -8,53 +8,92 @@
     <div style="min-width:0;">
         <small>REGISTRY, DELIVERY &amp; INSPECTION CONTROL</small>
         <h1>Supporting Staff Dashboard</h1>
-        <p>Register incoming files, search by State Code or File ID, carry out assigned inspections, and confirm physical submission.</p>
+        <p>
+            Register incoming files, search by State Code or File ID,
+            carry out assigned inspections, and confirm physical submission.
+        </p>
     </div>
-    <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+
+    <a class="cta" href="{{ url_for('receive') }}">
+        ＋ Register New File
+    </a>
 </div>
 
 <div class="stats">
-    <div class="stat"><small>Files Registered</small><strong>{{ stats.get('Total',0) }}</strong></div>
-    <div class="stat"><small>Awaiting Zonal Review</small><strong>{{ stats.get('Received',0) }}</strong></div>
-    <div class="stat"><small>Awaiting Physical Submission</small><strong>{{ stats.get('Forwarded',0) }}</strong></div>
-    <div class="stat"><small>Submitted</small><strong>{{ stats.get('Submitted',0) }}</strong></div>
-    <div class="stat"><small>My Inspections</small><strong>{{ my_inspections|default(0) }}</strong></div>
+    <div class="stat">
+        <small>Files Registered</small>
+        <strong>{{ stats.get('Total',0) }}</strong>
+    </div>
+
+    <div class="stat">
+        <small>Awaiting Zonal Review</small>
+        <strong>{{ stats.get('Received',0) }}</strong>
+    </div>
+
+    <div class="stat">
+        <small>Awaiting Physical Submission</small>
+        <strong>{{ stats.get('Forwarded',0) }}</strong>
+    </div>
+
+    <div class="stat">
+        <small>Submitted</small>
+        <strong>{{ stats.get('Submitted',0) }}</strong>
+    </div>
+
+    <div class="stat">
+        <small>My Inspections</small>
+        <strong>{{ my_inspections|default(0) }}</strong>
+    </div>
 </div>
 
 <div class="section">
     <h2>Supporting Staff Work Areas</h2>
+
     <div class="branches">
+
         <a href="{{ url_for('supporting_file_search') }}">
             <b>File Search</b>
-            <span>State Code / Reference No. / File ID</span>→
+            <span>State Code / Reference No. / File ID</span>
+            →
         </a>
+
         <a href="{{ url_for('receive') }}">
             <b>Register New File</b>
-            <span>Receive a file from an LGI</span>→
+            <span>Receive a file from an LGI</span>
+            →
         </a>
+
         <a href="{{ url_for('inspections') }}">
             <b>Inspections</b>
-            <span>Open assigned PPA inspections</span>→
+            <span>Open assigned PPA inspections</span>
+            →
         </a>
+
     </div>
 </div>
 
 <div class="section" style="border-color:#2d6a55;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;">
-        <div>
-            <small style="color:#32b37d;font-weight:800;letter-spacing:.08em;">RESTRICTED FILE ACCESS</small>
-            <h2 style="margin:5px 0 6px;">File Search</h2>
-            <p style="margin:0;">Use State Code / Reference No. or File ID to open the limited Supporting Staff file view.</p>
-        </div>
-        <a class="cta" href="{{ url_for('supporting_file_search') }}">Search Files →</a>
-    </div>
-</div>
 
-<div class="section">
-    <h2>Inspection</h2>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;">
-        <p style="margin:0;">{{ my_inspections|default(0) }} active PPA inspection assignment{{ '' if my_inspections|default(0)==1 else 's' }}.</p>
-        <a class="cta" href="{{ url_for('inspections') }}">Open Inspection →</a>
+        <div>
+            <small style="color:#32b37d;font-weight:800;letter-spacing:.08em;">
+                RESTRICTED FILE ACCESS
+            </small>
+
+            <h2 style="margin:5px 0 6px;">
+                File Search
+            </h2>
+
+            <p style="margin:0;">
+                Use State Code / Reference No. or File ID to open the limited
+                Supporting Staff file view.
+            </p>
+        </div>
+
+        <a class="cta" href="{{ url_for('supporting_file_search') }}">
+            Search Files →
+        </a>
+
     </div>
 </div>
 
@@ -63,46 +102,119 @@
 <div class="head">
     <div>
         <small>OPERATIONS CONTROL</small>
-        <h1>{% if current_user['role'] == 'Zonal Inspector' %}Zonal Inspector Dashboard{% else %}File Movement Dashboard{% endif %}</h1>
-        <p>{% if current_user['role'] == 'Zonal Inspector' %}Monitor file movement, PPA inspections, Corps Member attendance and reports submitted for review.{% else %}Monitor documents received from LGIs and their movement to the State Secretariat.{% endif %}</p>
+
+        <h1>
+            {% if current_user['role'] == 'Zonal Inspector' %}
+                Zonal Inspector Dashboard
+            {% else %}
+                File Movement Dashboard
+            {% endif %}
+        </h1>
+
+        <p>
+            {% if current_user['role'] == 'Zonal Inspector' %}
+                Monitor file movement, PPA inspections, Corps Member attendance
+                and reports submitted for review.
+            {% else %}
+                Monitor documents received from LGIs and their movement
+                to the State Secretariat.
+            {% endif %}
+        </p>
     </div>
-    <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+
+    <a class="cta" href="{{ url_for('receive') }}">
+        ＋ Register New File
+    </a>
 </div>
 
 <div class="stats">
     {% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}
-    <div class="stat"><small>{{ k }}</small><strong>{{ stats.get(k,0) }}</strong></div>
+    <div class="stat">
+        <small>{{ k }}</small>
+        <strong>{{ stats.get(k,0) }}</strong>
+    </div>
     {% endfor %}
 </div>
 
 <div class="section">
     <h2>Inspection &amp; PPA Monitoring</h2>
-    <p>Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.</p>
-    <a class="cta" href="{{ url_for('inspections') }}">Open Inspection →</a>
+
+    <p>
+        Monitor PPA assignments, Corps Member inspections and reports
+        submitted by Supporting Staff.
+    </p>
+
+    <a class="cta" href="{{ url_for('inspections') }}">
+        Open Inspection →
+    </a>
 </div>
 
 <div class="section">
     <h2>State Secretariat Branches</h2>
+
     <div class="branches">
         {% for b,n in branches %}
-        <a href="{{ url_for('files_page',branch=b) }}"><b>{{ b }}</b><span>{{ n }} file{{ '' if n==1 else 's' }}</span>→</a>
-        {% else %}<div class="card">No branch records yet.</div>{% endfor %}
+        <a href="{{ url_for('files_page',branch=b) }}">
+            <b>{{ b }}</b>
+            <span>{{ n }} file{{ '' if n==1 else 's' }}</span>
+            →
+        </a>
+        {% else %}
+        <div class="card">
+            No branch records yet.
+        </div>
+        {% endfor %}
     </div>
 </div>
 
 <div class="section">
     <h2>Recent Records</h2>
-    <div class="table"><table>
-        <tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr>
-        {% for r in recent %}
-        <tr>
-            <td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td>
-            <td><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td>
-            <td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td>
-            <td><span class="badge {{ r['status']|lower }}">{{ r['status'] }}</span></td>
-        </tr>
-        {% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}
-    </table></div>
+
+    <div class="table">
+        <table>
+            <tr>
+                <th>File ID</th>
+                <th>Document</th>
+                <th>Source</th>
+                <th>Location</th>
+                <th>Status</th>
+            </tr>
+
+            {% for r in recent %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('detail',file_id=r['file_id']) }}">
+                        {{ r['file_id'] }}
+                    </a>
+                </td>
+
+                <td>
+                    <b>{{ r['title'] }}</b>
+                    <small>
+                        {{ r['reference_no'] or 'No reference number' }}
+                    </small>
+                </td>
+
+                <td>{{ r['lga'] }}</td>
+                <td>{{ r['current_location'] }}</td>
+
+                <td>
+                    <span class="badge {{ r['status']|lower }}">
+                        {{ r['status'] }}
+                    </span>
+                </td>
+            </tr>
+
+            {% else %}
+            <tr>
+                <td colspan="5">
+                    No records yet.
+                </td>
+            </tr>
+            {% endfor %}
+
+        </table>
+    </div>
 </div>
 
 {% endif %}
