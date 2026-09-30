@@ -506,6 +506,10 @@ def dashboard():
 @login_required
 @lgi_report_only
 def files_page():
+    # Supporting Staff must use the restricted file search.
+    if current_user()["role"] == "Supporting Staff":
+        return redirect(url_for("supporting_file_search"))
+
     q=request.args.get("q","").strip()
     status=request.args.get("status","").strip()
     branch=request.args.get("branch","").strip()
@@ -553,13 +557,84 @@ def receive():
         (fid,"FILE RECEIVED",official,"Received from "+request.form["lga"],t))
         c.commit(); c.close()
         flash(fid+" registered successfully.","success")
+
+        if current_user()["role"] == "Supporting Staff":
+            return redirect(
+                url_for("supporting_file_view", file_id=fid)
+            )
+
         return redirect(url_for("detail",file_id=fid))
     return render_template("receive.html",lgas=LGAS,priorities=PRIORITIES)
+
+@app.route("/supporting-file-search")
+@login_required
+def supporting_file_search():
+    u = current_user()
+
+    if u["role"] != "Supporting Staff":
+        flash("This search is available to Supporting Staff only.","error")
+        return redirect(url_for("dashboard"))
+
+    q = request.args.get("q","").strip()
+    rows = []
+
+    if q:
+        c = db()
+        rows = c.execute("""
+            SELECT file_id,title,reference_no,lga,priority,status,
+                   description,attachment
+            FROM files
+            WHERE file_id ILIKE %s
+               OR reference_no ILIKE %s
+            ORDER BY id DESC
+        """,(f"%{q}%",f"%{q}%")).fetchall()
+        c.close()
+
+    return render_template(
+        "supporting_file_search.html",
+        rows=rows,
+        q=q
+    )
+
+
+@app.route("/supporting-file/<file_id>")
+@login_required
+def supporting_file_view(file_id):
+    u = current_user()
+
+    if u["role"] != "Supporting Staff":
+        flash("This page is available to Supporting Staff only.","error")
+        return redirect(url_for("dashboard"))
+
+    c = db()
+    f = c.execute("""
+        SELECT file_id,title,reference_no,lga,priority,status,
+               description,attachment
+        FROM files
+        WHERE file_id=%s
+    """,(file_id,)).fetchone()
+    c.close()
+
+    if not f:
+        flash("File not found.","error")
+        return redirect(url_for("supporting_file_search"))
+
+    return render_template(
+        "supporting_file_view.html",
+        f=f
+    )
+
 
 @app.route("/file/<file_id>")
 @login_required
 @lgi_report_only
 def detail(file_id):
+    # Supporting Staff must never access the full movement/audit view.
+    if current_user()["role"] == "Supporting Staff":
+        return redirect(
+            url_for("supporting_file_view", file_id=file_id)
+        )
+
     c=db()
     f=c.execute("SELECT * FROM files WHERE file_id=%s",(file_id,)).fetchone()
     if not f:
@@ -601,7 +676,7 @@ def acknowledge(file_id):
                    ORDER BY id DESC LIMIT 1""",(file_id,)).fetchone()
     if not m:
         c.close(); flash("No pending forwarded file is awaiting physical-submission confirmation.","error")
-        return redirect(url_for("detail",file_id=file_id))
+        return redirect(url_for("supporting_file_view", file_id=file_id))
     c.execute("""UPDATE movements SET status='Submitted', submitted_at=%s, submitted_by=%s,
                  acknowledged_at=%s WHERE id=%s""",
               (t,official,t,m["id"]))
@@ -611,8 +686,14 @@ def acknowledge(file_id):
     (file_id,"PHYSICAL FILE SUBMITTED",official,
      f"Physical file submitted to {m['to_location']}",t))
     c.commit(); c.close()
-    flash(f"Physical submission of {file_id} to {m['to_location']} confirmed.","success")
-    return redirect(url_for("detail",file_id=file_id))
+    flash(
+        f"Physical submission of {file_id} to {m['to_location']} confirmed.",
+        "success"
+    )
+
+    return redirect(
+        url_for("supporting_file_view", file_id=file_id)
+    )
 
 @app.route("/return/<file_id>",methods=["POST"])
 @movement_required
