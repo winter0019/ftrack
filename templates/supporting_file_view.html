@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}File Information | NYSC Katsina Zonal Office{% endblock %}
+
+{% block content %}
+
+<div class="head">
+    <div>
+        <small>SUPPORTING STAFF · FILE INFORMATION</small>
+        <h1>File Information</h1>
+        <p>Basic file information for physical handling.</p>
+    </div>
+
+    <a class="cta"
+       href="{{ url_for('supporting_file_search') }}">
+        ← File Search
+    </a>
+</div>
+
+<div class="details">
+
+    <div>
+        <small>File ID</small>
+        <b>{{ f['file_id'] }}</b>
+    </div>
+
+    <div>
+        <small>State Code / Reference No.</small>
+        <b>{{ f['reference_no'] or '—' }}</b>
+    </div>
+
+    <div>
+        <small>Document</small>
+        <b>{{ f['title'] }}</b>
+    </div>
+
+    <div>
+        <small>LGA</small>
+        <b>{{ f['lga'] }}</b>
+    </div>
+
+    <div>
+        <small>Priority</small>
+        <b>{{ f['priority'] or 'Normal' }}</b>
+    </div>
+
+    <div>
+        <small>Status</small>
+        <b>{{ f['status'] }}</b>
+    </div>
+
+</div>
+
+{% if f['description'] %}
+
+<div class="card">
+    <h2>Document Description</h2>
+    <p>{{ f['description'] }}</p>
+</div>
+
+{% endif %}
+
+{% if f['attachment'] %}
+
+<div class="card">
+    <h2>Attachment</h2>
+
+    <div class="attachment">
+        <b>{{ f['attachment'] }}</b>
+
+        <a href="{{ url_for('download', filename=f['attachment']) }}">
+            Open Attachment
+        </a>
+    </div>
+</div>
+
+{% endif %}
+
+{% if f['status'] == 'Forwarded' %}
+
+<div class="card">
+
+    <h2>Physical Submission</h2>
+
+    <p>
+        If you have physically submitted this file to the assigned
+        Secretariat branch, confirm the submission below.
+    </p>
+
+    <form
+        method="POST"
+        action="{{ url_for('acknowledge', file_id=f['file_id']) }}"
+        onsubmit="return confirm('Confirm that this physical file has been submitted?');"
+    >
+        <button type="submit" class="cta">
+            ✓ Confirm Physical Submission
+        </button>
+    </form>
+
+</div>
+
+{% endif %}
+
+{% endblock %}
