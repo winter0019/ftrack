@@ -92,15 +92,18 @@
         <h1>Supporting Staff Dashboard</h1>
 
         <p>
-            Register incoming files, carry out assigned inspections,
-            and confirm physical delivery of forwarded files.
+            Register incoming files, search files by State Code or
+            Reference No., carry out assigned inspections, and confirm
+            physical delivery of forwarded files.
         </p>
     </div>
 
-    <a class="cta" href="{{ url_for('receive') }}">
+    <!-- Supporting Staff can still register files received from LGIs -->
+    <a class="cta" href="{{url_for('receive')}}">
         ＋ Register New File
     </a>
 </div>
+
 
 <div class="stats">
 
@@ -131,6 +134,7 @@
 
 </div>
 
+
 <div class="section">
     <h2>Supporting Staff Work Areas</h2>
 
@@ -141,9 +145,16 @@
             <span>Inspect & report</span>→
         </a>
 
-        <a href="{{url_for('files_page')}}">
-            <b>File Register</b>
-            <span>Register & track</span>→
+        <!-- Restricted file search -->
+        <a href="{{url_for('supporting_file_search')}}">
+            <b>File Search</b>
+            <span>Search by State Code</span>→
+        </a>
+
+        <!-- Existing file registration remains available -->
+        <a href="{{url_for('receive')}}">
+            <b>Register New File</b>
+            <span>Receive from LGIs</span>→
         </a>
 
         <a href="{{url_for('files_page',status='Forwarded')}}">
@@ -153,6 +164,7 @@
 
     </div>
 </div>
+
 
 <div class="section">
     <h2>Recent Records</h2>
@@ -172,13 +184,12 @@
             <tr>
 
                 <td>
-                    <a href="{{url_for('detail',file_id=r['file_id'])}}">
-                        {{r['file_id']}}
-                    </a>
+                    <b>{{r['file_id']}}</b>
                 </td>
 
                 <td>
                     <b>{{r['title']}}</b>
+
                     <small>
                         {{r['reference_no'] or 'No reference number'}}
                     </small>
@@ -226,6 +237,7 @@
     </a>
 </div>
 
+
 <div class="stats">
 
     {% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}
@@ -238,6 +250,7 @@
     {% endfor %}
 
 </div>
+
 
 <div class="section">
     <h2>State Secretariat Branches</h2>
@@ -260,6 +273,7 @@
 
     </div>
 </div>
+
 
 <div class="section">
     <h2>Inspection & Reporting Control</h2>
@@ -290,6 +304,7 @@
 
     </div>
 </div>
+
 
 <div class="section">
     <h2>Recent Records</h2>
