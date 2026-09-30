@@ -1,118 +1,21 @@
 {% extends "base.html" %}
-
-{% block title %}File Search | NYSC Katsina Zonal Office{% endblock %}
-
+{% block title %}File Search | Supporting Staff{% endblock %}
 {% block content %}
-
 <div class="head">
-    <div>
-        <small>SUPPORTING STAFF</small>
-        <h1>File Search</h1>
-        <p>Search for a file using the State Code / Reference No. or File ID.</p>
-    </div>
-
-    <a class="cta" href="{{ url_for('dashboard') }}">← Dashboard</a>
+  <div><small>RESTRICTED FILE ACCESS</small><h1>File Search</h1><p>Search by State Code / Reference No. or File ID.</p></div>
+  <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
 </div>
-
-<div class="card">
-
-    <form method="get" action="{{ url_for('supporting_file_search') }}">
-
-        <label>
-            State Code / Reference No. or File ID
-
-            <input
-                type="text"
-                name="q"
-                value="{{ q }}"
-                placeholder="e.g. KT/26A/0173 or KZO-FM-2026-0001"
-                autocomplete="off"
-                required
-            >
-        </label>
-
-        <div class="actions">
-            <a href="{{ url_for('supporting_file_search') }}">Clear</a>
-            <button type="submit" class="cta">Search File</button>
-        </div>
-
-    </form>
-
+<div class="section">
+  <form method="get" action="{{ url_for('supporting_file_search') }}" style="display:flex;gap:10px;flex-wrap:wrap;">
+    <input name="q" value="{{ q }}" placeholder="State Code / Reference No. or File ID" autocomplete="off" style="flex:1;min-width:280px;">
+    <button class="cta" type="submit">Search</button>
+  </form>
 </div>
-
 {% if q %}
-
-<div class="card">
-
-    <h2>Search Results</h2>
-
-    {% if rows %}
-
-    <div class="table">
-        <table>
-
-            <tr>
-                <th>File ID</th>
-                <th>State Code / Reference No.</th>
-                <th>Document</th>
-                <th>LGA</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-
-            {% for r in rows %}
-
-            <tr>
-
-                <td>
-                    <b>{{ r['file_id'] }}</b>
-                </td>
-
-                <td>
-                    {{ r['reference_no'] or '—' }}
-                </td>
-
-                <td>
-                    {{ r['title'] }}
-                </td>
-
-                <td>
-                    {{ r['lga'] }}
-                </td>
-
-                <td>
-                    <span class="badge {{ r['status']|lower }}">
-                        {{ r['status'] }}
-                    </span>
-                </td>
-
-                <td>
-                    <a
-                        class="cta"
-                        href="{{ url_for('supporting_file_view', file_id=r['file_id']) }}"
-                    >
-                        View File
-                    </a>
-                </td>
-
-            </tr>
-
-            {% endfor %}
-
-        </table>
-    </div>
-
-    {% else %}
-
-    <p>
-        No file was found for
-        <b>{{ q }}</b>.
-    </p>
-
-    {% endif %}
-
-</div>
-
-{% endif %}
-
+<div class="section">
+  <h2>Search Results</h2>
+  {% if rows %}<div class="table"><table><tr><th>File ID</th><th>State Code / Reference No.</th><th>Document</th><th>LGA</th><th>Status</th><th></th></tr>
+  {% for r in rows %}<tr><td>{{ r['file_id'] }}</td><td>{{ r['reference_no'] or '—' }}</td><td>{{ r['title'] }}</td><td>{{ r['lga'] or '—' }}</td><td>{{ r['status'] }}</td><td><a class="cta" href="{{ url_for('supporting_file_view',file_id=r['file_id']) }}">View</a></td></tr>{% endfor %}
+  </table></div>{% else %}<p>No file was found for <strong>{{ q }}</strong>.</p>{% endif %}
+</div>{% endif %}
 {% endblock %}

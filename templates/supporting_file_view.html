@@ -1,104 +1,17 @@
 {% extends "base.html" %}
-
-{% block title %}File Information | NYSC Katsina Zonal Office{% endblock %}
-
+{% block title %}Restricted File View | Supporting Staff{% endblock %}
 {% block content %}
-
-<div class="head">
-    <div>
-        <small>SUPPORTING STAFF · FILE INFORMATION</small>
-        <h1>File Information</h1>
-        <p>Basic file information for physical handling.</p>
-    </div>
-
-    <a class="cta"
-       href="{{ url_for('supporting_file_search') }}">
-        ← File Search
-    </a>
-</div>
-
-<div class="details">
-
-    <div>
-        <small>File ID</small>
-        <b>{{ f['file_id'] }}</b>
-    </div>
-
-    <div>
-        <small>State Code / Reference No.</small>
-        <b>{{ f['reference_no'] or '—' }}</b>
-    </div>
-
-    <div>
-        <small>Document</small>
-        <b>{{ f['title'] }}</b>
-    </div>
-
-    <div>
-        <small>LGA</small>
-        <b>{{ f['lga'] }}</b>
-    </div>
-
-    <div>
-        <small>Priority</small>
-        <b>{{ f['priority'] or 'Normal' }}</b>
-    </div>
-
-    <div>
-        <small>Status</small>
-        <b>{{ f['status'] }}</b>
-    </div>
-
-</div>
-
-{% if f['description'] %}
-
-<div class="card">
-    <h2>Document Description</h2>
-    <p>{{ f['description'] }}</p>
-</div>
-
-{% endif %}
-
-{% if f['attachment'] %}
-
-<div class="card">
-    <h2>Attachment</h2>
-
-    <div class="attachment">
-        <b>{{ f['attachment'] }}</b>
-
-        <a href="{{ url_for('download', filename=f['attachment']) }}">
-            Open Attachment
-        </a>
-    </div>
-</div>
-
-{% endif %}
-
-{% if f['status'] == 'Forwarded' %}
-
-<div class="card">
-
-    <h2>Physical Submission</h2>
-
-    <p>
-        If you have physically submitted this file to the assigned
-        Secretariat branch, confirm the submission below.
-    </p>
-
-    <form
-        method="POST"
-        action="{{ url_for('acknowledge', file_id=f['file_id']) }}"
-        onsubmit="return confirm('Confirm that this physical file has been submitted?');"
-    >
-        <button type="submit" class="cta">
-            ✓ Confirm Physical Submission
-        </button>
-    </form>
-
-</div>
-
-{% endif %}
-
+<div class="head"><div><small>RESTRICTED FILE VIEW</small><h1>{{ f['file_id'] }}</h1><p>Only information required for Supporting Staff is displayed.</p></div><a class="cta" href="{{ url_for('supporting_file_search') }}">← File Search</a></div>
+<div class="section"><h2>File Information</h2><div class="branches">
+<div><small>FILE ID</small><b>{{ f['file_id'] }}</b></div>
+<div><small>STATE CODE / REFERENCE NO.</small><b>{{ f['reference_no'] or '—' }}</b></div>
+<div><small>DOCUMENT</small><b>{{ f['title'] }}</b></div>
+<div><small>LGA</small><b>{{ f['lga'] or '—' }}</b></div>
+<div><small>PRIORITY</small><b>{{ f['priority'] or 'Normal' }}</b></div>
+<div><small>STATUS</small><b>{{ f['status'] }}</b></div>
+</div></div>
+{% if f['description'] %}<div class="section"><h2>Description</h2><p>{{ f['description'] }}</p></div>{% endif %}
+{% if f['attachment'] %}<div class="section"><h2>Attachment</h2><a class="cta" href="{{ url_for('download',name=f['attachment']) }}">View / Download Document</a></div>{% endif %}
+{% if f['status'] == 'Forwarded' %}<div class="section"><h2>Physical Submission</h2><p>Confirm only when the physical file has been submitted.</p><form method="post" action="{{ url_for('acknowledge',file_id=f['file_id']) }}" onsubmit="return confirm('Confirm that the physical file has been submitted?');"><button class="cta" type="submit">✓ Confirm Physical Submission</button></form></div>{% endif %}
+<div class="section"><p style="font-size:13px;opacity:.7;">Movement history, forwarding details, receiving officers, movement dates, internal remarks and audit records are restricted to authorised officers.</p></div>
 {% endblock %}
