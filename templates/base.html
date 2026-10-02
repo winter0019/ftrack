@@ -288,6 +288,8 @@ footer {
   .menu { display: block; }
   .top nav {
     display: none !important;
+    position: relative;
+    z-index: 20;
     order: 3;
     width: 100%;
     margin: 0;
@@ -297,6 +299,7 @@ footer {
     gap: 4px;
     border-top: 1px solid #ffffff25;
   }
+  .top nav.is-open,
   .top.menu-open nav,
   body.open .top nav { display: flex !important; }
   .top nav > a { padding: 10px 8px; white-space: normal; }
@@ -342,6 +345,83 @@ footer {
   .wrap .stats { grid-template-columns: 1fr 1fr; }
   .wrap .head h1 { font-size: 25px; }
 }
+
+/* Cross-page responsive safeguards: prevent wide forms/tables from widening
+   the entire mobile page. These rules intentionally override legacy styles. */
+html { width: 100%; max-width: 100%; overflow-x: clip; }
+body { width: 100%; max-width: 100%; overflow-x: clip; }
+img, video, iframe, canvas, svg { max-width: 100%; }
+.wrap, .wrap * { min-width: 0; }
+.wrap { max-width: 1440px; }
+.wrap input, .wrap select, .wrap textarea, .wrap button {
+  max-width: 100%;
+}
+.wrap input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.wrap select, .wrap textarea {
+  min-width: 0;
+}
+.wrap form { max-width: 100%; }
+.wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.wrap .table, .wrap .records-wrap, .wrap .table-wrap,
+.wrap .table-responsive, .wrap .overflow-x-auto {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.wrap table { max-width: 100%; }
+.wrap th, .wrap td { overflow-wrap: anywhere; }
+.wrap .section, .wrap .card, .wrap .stat, .wrap .branches > a {
+  overflow-wrap: anywhere;
+}
+.wrap .head > *, .wrap .section > *, .wrap form > * { max-width: 100%; }
+
+@media (max-width: 760px) {
+  .top { width: 100%; max-width: 100%; }
+  .top nav { width: 100%; max-width: 100%; }
+  .top nav > a { display: flex; align-items: center; width: 100%; }
+  .top nav > a.cta { width: 100%; }
+  .wrap {
+    width: calc(100% - 28px) !important;
+    max-width: calc(100% - 28px) !important;
+    padding: 18px 0 28px !important;
+  }
+  .wrap .head { gap: 14px; }
+  .wrap .head h1 { overflow-wrap: anywhere; }
+  .wrap .head .cta { width: auto; max-width: 100%; white-space: normal; }
+  .wrap .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .wrap .stat { padding: 13px !important; }
+  .wrap .stat small { font-size: 12px; }
+  .wrap .stat strong { font-size: 24px !important; }
+  .wrap .branches { grid-template-columns: 1fr !important; }
+  .wrap form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .wrap form label { max-width: 100%; }
+  .wrap form input, .wrap form select, .wrap form textarea {
+    width: 100%;
+    max-width: 100%;
+  }
+  .wrap form button, .wrap form .cta { max-width: 100%; }
+  .wrap .table table, .wrap .records-wrap table,
+  .wrap .table-wrap table, .wrap .table-responsive table {
+    min-width: 680px;
+    width: max-content;
+  }
+  footer {
+    width: calc(100% - 28px) !important;
+    max-width: calc(100% - 28px) !important;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 420px) {
+  .wrap .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .wrap .head h1 { font-size: 24px !important; }
+  .wrap .section { padding: 13px !important; }
+  .mobile-account { overflow-wrap: anywhere; }
+}
 </style>
 </head>
 
@@ -372,6 +452,10 @@ footer {
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
+
+    {% if current_user and current_user['role'] in ['Administrator', 'Zonal Inspector', 'Supporting Staff'] %}
+      <a href="{{ url_for('inspections') }}">Inspection</a>
+    {% endif %}
 
     {% if current_user and current_user['role']=='Administrator' %}
       <a class="admin-link" href="{{ url_for('users') }}">Officials</a>
@@ -428,13 +512,16 @@ footer {
 
   function closeMenu() {
     header.classList.remove("menu-open");
+    nav.classList.remove("is-open");
     document.body.classList.remove("open");
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-label", "Open navigation menu");
   }
 
   toggle.addEventListener("click", function () {
-    const isOpen = header.classList.toggle("menu-open");
+    const isOpen = !nav.classList.contains("is-open");
+    nav.classList.toggle("is-open", isOpen);
+    header.classList.toggle("menu-open", isOpen);
     document.body.classList.toggle("open", isOpen);
     toggle.setAttribute("aria-expanded", String(isOpen));
     toggle.setAttribute("aria-label", isOpen ? "Close navigation menu" : "Open navigation menu");
@@ -442,6 +529,10 @@ footer {
 
   nav.querySelectorAll("a").forEach(function (link) {
     link.addEventListener("click", closeMenu);
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeMenu();
   });
 
   window.addEventListener("resize", function () {
