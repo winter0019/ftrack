@@ -1,437 +1,249 @@
 {% extends "base.html" %}
-
 {% block title %}{{ f.file_id }} | FileTrack{% endblock %}
 
 {% block content %}
+<style>
+.detail-wrap { max-width: 1400px; margin: 0 auto; padding: 12px 0 40px; color: #17352d; }
+.detail-wrap * { box-sizing: border-box; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; color: #0b9b68; font-weight: 750; text-decoration: none; font-size: 13px; margin-bottom: 16px; }
+.back-link:hover { text-decoration: underline; }
 
-<a class="back" href="{{ url_for('files_page') }}">← File Register</a>
+.detail-header { background: #fff; border: 1px solid #e0eae5; border-radius: 16px; padding: 24px 28px; box-shadow: 0 4px 16px #173d2c06; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.detail-header h1 { margin: 4px 0 2px; font-size: clamp(24px, 3vw, 32px); font-weight: 850; color: #07543f; }
+.detail-header .eyebrow-text { color: #16815b; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.detail-header .subtitle { color: #5a7369; font-size: 14px; font-weight: 600; margin-top: 4px; }
 
-<div class="head">
+/* Modern Badge */
+.status-badge { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 800; background: #e6f5ed; color: #147347; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.status-badge.submitted { background: #fff4dc; color: #946514; }
+.status-badge.returned { background: #fff0ee; color: #a13c32; }
+.status-badge.forwarded { background: #eaf3ef; color: #376b55; }
+.status-badge.received { background: #e6f5ed; color: #147347; }
+
+/* Metadata Grid Cards */
+.meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; background: #f8fbfa; border: 1px solid #e5eee9; border-radius: 12px; padding: 20px; margin-top: 18px; }
+.meta-item { display: flex; flex-direction: column; gap: 3px; }
+.meta-item small { font-size: 10.5px; font-weight: 800; color: #6d827a; text-transform: uppercase; letter-spacing: .06em; }
+.meta-item b { font-size: 13.5px; font-weight: 750; color: #1c3d32; word-break: break-word; }
+
+.attachment-box { margin-top: 16px; padding: 12px 16px; background: #f0f8f3; border: 1px solid #d5eade; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; color: #138258; }
+.attachment-box a { color: #07543f; background: #fff; padding: 6px 14px; border-radius: 6px; border: 1px solid #c5d8ce; text-decoration: none; font-size: 12px; font-weight: 800; transition: background .15s ease; }
+.attachment-box a:hover { background: #e4f2eb; }
+
+/* Cards & Panels */
+.card-panel { background: #fff; border: 1px solid #e0eae5; border-radius: 16px; padding: 22px 24px; margin-top: 20px; box-shadow: 0 4px 16px #173d2c06; }
+.card-panel h2 { margin: 0 0 8px; font-size: 18px; color: #17352d; font-weight: 800; }
+.card-panel p { color: #667973; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
+
+/* Form Controls inside Card Panel */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.form-grid label, .card-panel label { display: block; font-size: 11.5px; font-weight: 800; color: #2d4940; margin-bottom: 5px; }
+.form-grid input, .card-panel select, .card-panel textarea { width: 100%; height: 42px; border: 1px solid #d3e0da; border-radius: 8px; background: #fbfdfc; color: #172832; padding: 0 12px; font: inherit; font-size: 13px; outline: none; }
+.card-panel textarea { height: 80px; padding: 10px 12px; resize: vertical; }
+.form-grid input:focus, .card-panel select:focus, .card-panel textarea:focus { border-color: #0b9b68; box-shadow: 0 0 0 3px #0b9b6818; }
+
+.cta-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 22px; border: 0; border-radius: 8px; background: #07543f; color: #fff; font: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer; transition: background .15s ease; }
+.cta-btn:hover { background: #087653; }
+
+/* Fixed Tables & Column Proportions */
+.table-container { width: 100%; overflow-x: auto; margin-top: 12px; }
+.modern-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1150px; table-layout: fixed; }
+.modern-table th { padding: 12px 14px; text-align: left; background: #f4f8f6; color: #5e7169; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #e0eae5; white-space: nowrap; }
+.modern-table td { padding: 13px 14px; border-bottom: 1px solid #edf2ef; vertical-align: middle; color: #213c34; word-wrap: break-word; overflow-wrap: break-word; }
+.modern-table tbody tr:hover { background: #fbfdfc; }
+
+/* Strict Column Width Allocations for 9 Columns */
+.modern-table th:nth-child(1), .modern-table td:nth-child(1) { width: 12%; } /* Date/Time */
+.modern-table th:nth-child(2), .modern-table td:nth-child(2) { width: 11%; } /* From */
+.modern-table th:nth-child(3), .modern-table td:nth-child(3) { width: 9%;  } /* To */
+.modern-table th:nth-child(4), .modern-table td:nth-child(4) { width: 13%; } /* Forwarding Official */
+.modern-table th:nth-child(5), .modern-table td:nth-child(5) { width: 12%; } /* Receiving Official */
+.modern-table th:nth-child(6), .modern-table td:nth-child(6) { width: 13%; } /* Submitted By */
+.modern-table th:nth-child(7), .modern-table td:nth-child(7) { width: 12%; } /* Submitted At */
+.modern-table th:nth-child(8), .modern-table td:nth-child(8) { width: 10%; } /* Status */
+.modern-table th:nth-child(9), .modern-table td:nth-child(9) { width: 8%;  } /* Remarks */
+
+/* Timeline Audit Trail */
+.audit-timeline { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.audit-box { padding: 14px 18px; background: #f9fbfb; border: 1px solid #e5eee9; border-radius: 10px; }
+.audit-box b { color: #07543f; font-size: 13px; display: block; margin-bottom: 3px; }
+.audit-box p { margin: 0; color: #354f46; font-size: 13px; }
+.audit-meta { margin-top: 6px; font-size: 11px; color: #7a8a84; font-weight: 600; }
+</style>
+
+<div class="detail-wrap">
+<a class="back-link" href="{{ url_for('files_page') }}">← Back to File Register</a>
+
+<header class="detail-header">
     <div>
-        <small>FILE RECORD</small>
+        <span class="eyebrow-text">File Record</span>
         <h1>{{ f.file_id }}</h1>
-        <p>{{ f.title }}</p>
+        <div class="subtitle">{{ f.title }}</div>
     </div>
-    <span class="badge large {{ f.status|lower }}">{{ f.status }}</span>
-</div>
+    <span class="status-badge {{ f.status|lower }}">{{ f.status }}</span>
+</header>
 
 {% if current_user['role'] == 'Supporting Staff' %}
 
-<div class="details">
-    {% for l,v in [
-        ('Document',f.title),
-        ('Reference No.',f.reference_no or '—'),
-        ('Source LGA',f.lga),
-        ('LGI',f.lgi_name or '—'),
-        ('Received',f.received_at),
-        ('Current Location',f.current_location),
-        ('Priority',f.priority)
-    ] %}
-    <div>
-        <small>{{ l }}</small>
-        <b>{{ v }}</b>
+    <div class="card-panel" style="padding-top:18px;">
+        <div class="meta-grid">
+            {% for l,v in [('Document',f.title),('Reference No.',f.reference_no or '—'),('Source LGA',f.lga),('LGI',f.lgi_name or '—'),('Received',f.received_at),('Current Location',f.current_location),('Priority',f.priority)] %}
+            <div class="meta-item"><small>{{l}}</small><b>{{v}}</b></div>
+            {% endfor %}
+        </div>
+        
+        {% if f.attachment %}
+        <div class="attachment-box">
+            <span>Electronic copy attached to this record</span>
+            <a href="{{ url_for('download',name=f.attachment) }}">Download File</a>
+        </div>
+        {% endif %}
     </div>
-    {% endfor %}
-</div>
 
-{% if f.attachment %}
-<div class="attachment">
-    Electronic copy attached
-    <a href="{{ url_for('download',name=f.attachment) }}">Download</a>
-</div>
-{% endif %}
+    {% if f.status == 'Forwarded' %}
+    <div class="card-panel" style="border-left:5px solid #d49a00; background:#fffaf0;">
+        <h2>Physical Submission Required</h2>
+        <p>This file has been forwarded by the Zonal Inspector to <strong>{{ f.current_location }}</strong>.</p>
+        <p>Take the physical file to the selected Secretariat branch and confirm the submission only after the file has been physically delivered.</p>
+        <div style="margin: 12px 0; font-size: 13px;">
+            <div><strong>Destination:</strong> {{ f.current_location }}</div>
+            <div><strong>Supporting Staff:</strong> {{ current_user['full_name'] }}</div>
+        </div>
+        <form method="post" style="margin-top:14px;">
+            <button class="cta-btn" onclick="return confirm('Confirm that the physical file has been submitted to {{ f.current_location }}?')">✓ Confirm Physical Submission</button>
+        </form>
+    </div>
+    {% elif f.status == 'Submitted' %}
+    <div class="card-panel" style="border-left:5px solid #0b6b52; background:#f5faf8;">
+        <h2>✓ Physical Submission Confirmed</h2>
+        <p>The physical file has been confirmed as submitted to <strong>{{ f.current_location }}</strong>.</p>
+        <p><strong>Submitted by:</strong> Signed-in Supporting Staff account</p>
+        <small style="color: #667973;">The Administrator/Zonal Inspector can verify this confirmation in the system record.</small>
+    </div>
+    {% elif f.status == 'Received' and f.current_location == 'Katsina Zonal Office' %}
+    <div class="card-panel" style="border-left:5px solid #d49a00; background:#fffaf0;">
+        <h2>Awaiting Zonal Review</h2>
+        <p>This file has been registered and is waiting for the Zonal Inspector to review and forward it to the appropriate Secretariat branch.</p>
+        <small style="color: #667973;">No further action is required from Supporting Staff at this stage.</small>
+    </div>
+    {% elif f.status == 'Returned' %}
+    <div class="card-panel" style="border-left:5px solid #b33333; background:#fff7f7;">
+        <h2>File Returned</h2>
+        <p>This file has been returned by the Zonal Office. Please follow the instructions provided in the file record remarks.</p>
+    </div>
+    {% endif %}
 
-
-{% if f.status == 'Forwarded' %}
-
-<div class="card ack">
-
-    <h2>Physical Submission Required</h2>
-
-    <p>
-        This file has been forwarded by the Zonal Inspector to
-        <strong>{{ f.current_location }}</strong>.
-    </p>
-
-    <p>
-        Take the physical file to the selected Secretariat branch and confirm
-        the submission only after the file has been physically delivered.
-    </p>
-
-    <p>
-        <strong>Destination:</strong> {{ f.current_location }}
-    </p>
-
-    <p>
-        <strong>Supporting Staff:</strong>
-        {{ current_user['full_name'] }}
-    </p>
-
-    <form
-        method="POST"
-        action="{{ url_for('acknowledge', file_id=f.file_id) }}"
-        onsubmit="return confirm('Confirm that the physical file has been submitted to {{ f.current_location }}?');"
-    >
-        <button
-            type="submit"
-            class="cta"
-            style="margin-top:12px"
-        >
-            ✓ Confirm Physical Submission
-        </button>
-    </form>
-
-</div>
-
-
-{% elif f.status == 'Submitted' %}
-
-<div
-    class="card ack"
-    style="border-left:4px solid #0b6b52;background:#f5faf8"
->
-    <h2>✓ Physical Submission Confirmed</h2>
-
-    <p>
-        The physical file has been confirmed as submitted to
-        <strong>{{ f.current_location }}</strong>.
-    </p>
-
-    <p>
-        <strong>Submitted by:</strong>
-        The signed-in Supporting Staff account
-    </p>
-
-    <small>
-        The Administrator/Zonal Inspector can see the submission confirmation
-        in the operational record.
-    </small>
-</div>
-
-
-{% elif f.status == 'Received'
-      and f.current_location == 'Katsina Zonal Office' %}
-
-<div
-    class="card"
-    style="border-left:4px solid #d49a00;background:#fffaf0"
->
-    <h2>Awaiting Zonal Review</h2>
-
-    <p>
-        This file has been registered and is waiting for the Zonal Inspector
-        to review and forward it to the appropriate Secretariat branch.
-    </p>
-
-    <small>
-        No further action is required from Supporting Staff at this stage.
-    </small>
-</div>
-
-
-{% elif f.status == 'Returned' %}
-
-<div
-    class="card"
-    style="border-left:4px solid #b33;background:#fff7f7"
->
-    <h2>File Returned</h2>
-
-    <p>
-        This file has been returned by the Zonal Office. Please follow the
-        instruction provided in the file record or remarks.
-    </p>
-</div>
-
-{% endif %}
-
-
-<div
-    class="card"
-    style="margin-top:16px;border-left:4px solid #0b6b52;background:#f5faf8"
->
-    <strong>Your responsibility</strong>
-
-    <p style="margin:6px 0 0;opacity:.78">
-        Register physical files received from LGIs for Zonal Inspector review.
-        When a file is forwarded, physically submit it to the selected
-        Secretariat branch and confirm the submission in FileTrack.
-    </p>
-</div>
-
+    <div class="card-panel" style="border-left:5px solid #0b6b52; background:#f5faf8;">
+        <strong>Your Responsibility</strong>
+        <p style="margin:6px 0 0; color:#5a7369;">Register physical files received from LGIs for Zonal Inspector review. When a file is forwarded, physically submit it to the selected Secretariat branch and confirm the submission in FileTrack.</p>
+    </div>
 
 {% else %}
 
-<div class="details">
-    {% for l,v in [
-        ('Document',f.title),
-        ('Reference No.',f.reference_no or '—'),
-        ('Source LGA',f.lga),
-        ('LGI',f.lgi_name or '—'),
-        ('Receiving Official',f.received_by),
-        ('Received',f.received_at),
-        ('Current Location',f.current_location),
-        ('Priority',f.priority)
-    ] %}
-    <div>
-        <small>{{ l }}</small>
-        <b>{{ v }}</b>
-    </div>
-    {% endfor %}
-</div>
-
-
-{% if f.attachment %}
-<div class="attachment">
-    Electronic copy attached
-    <a href="{{ url_for('download',name=f.attachment) }}">Download</a>
-</div>
-{% endif %}
-
-
-{% if current_user['role'] in ['Administrator','Zonal Inspector']
-      and f.current_location == 'Katsina Zonal Office' %}
-
-<form
-    class="card"
-    method="post"
-    action="{{ url_for('forward',file_id=f.file_id) }}"
->
-
-    <h2>Forward File</h2>
-
-    <div
-        class="card"
-        style="background:#f7faf8;box-shadow:none;margin-bottom:14px"
-    >
-        <strong>
-            Forwarding Official:
-        </strong>
-
-        {{ current_user['full_name'] }}
-
-        <small
-            style="display:block;opacity:.7"
-        >
-            Automatically recorded from your signed-in account.
-        </small>
-    </div>
-
-    <div class="grid">
-
-        <label>
-            Destination Branch
-
-            <select name="to_location">
-                {% for b in branches %}
-                <option>{{ b }}</option>
-                {% endfor %}
-            </select>
-        </label>
-
-        <label>
-            Receiving Official
-
-            <input
-                name="receiving_officer"
-                placeholder="Optional — branch officer expecting the file"
-            >
-        </label>
-
-        <label>
-            Action / Purpose
-
-            <input
-                name="action"
-                placeholder="e.g. For review / action"
-            >
-        </label>
-
-    </div>
-
-    <label>
-        Remarks
-        <textarea name="remarks"></textarea>
-    </label>
-
-    <div class="actions">
-        <button class="cta">
-            Record & Forward File
-        </button>
-    </div>
-
-</form>
-
-
-{% elif current_user['role'] in ['Administrator','Zonal Inspector']
-      and f.status == 'Forwarded' %}
-
-<div
-    class="card"
-    style="border-left:4px solid #d49a00;background:#fffaf0"
->
-    <h2>Awaiting Physical Submission</h2>
-
-    <p style="margin:6px 0">
-        The file has been assigned to
-        <strong>{{ f.current_location }}</strong>
-        but the Supporting Staff delivery confirmation has not yet been recorded.
-    </p>
-
-    <small>
-        The responsible Supporting Staff member should confirm the physical
-        submission after delivering the file.
-    </small>
-</div>
-
-
-{% elif f.status == 'Submitted' %}
-
-<div
-    class="card ack"
-    style="border-left:4px solid #0b6b52;background:#f5faf8"
->
-    <h2>Physical Submission Confirmed</h2>
-
-    <p>
-        The file was physically submitted to
-        <strong>{{ f.current_location }}</strong>.
-    </p>
-
-    <small>
-        See the Movement History and Audit Trail below for the delivery
-        official and confirmation time.
-    </small>
-</div>
-
-{% endif %}
-
-
-{% if current_user['role'] in ['Administrator','Zonal Inspector']
-      and f.status == 'Received'
-      and f.current_location == 'Katsina Zonal Office' %}
-
-<div
-    class="card"
-    style="margin-top:16px;border-left:4px solid #d49a00;background:#fffaf0"
->
-    <strong>Pending Zonal Review</strong>
-
-    <p style="margin:6px 0 0;opacity:.78">
-        This file was registered by
-        <strong>{{ f.received_by }}</strong>
-        after receipt from
-        <strong>{{ f.lga }}</strong>.
-        Review the document and its attachment, then forward it to the
-        appropriate Secretariat branch when ready.
-    </p>
-</div>
-
-{% endif %}
-
-
-<div class="section">
-
-    <h2>Movement History</h2>
-
-    <div class="table">
-
-        <table>
-
-            <tr>
-                <th>Date/Time</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Forwarding Official</th>
-                <th>Receiving Official</th>
-                <th>Submitted By</th>
-                <th>Submitted At</th>
-                <th>Status</th>
-                <th>Remarks</th>
-            </tr>
-
-            {% for m in movements %}
-
-            <tr>
-
-                <td>{{ m['forwarded_at'] }}</td>
-
-                <td>{{ m['from_location'] }}</td>
-
-                <td>{{ m['to_location'] }}</td>
-
-                <td>{{ m['forwarded_by'] }}</td>
-
-                <td>
-                    {{ m['receiving_officer'] or '—' }}
-                </td>
-
-                <td>
-                    {{ m['submitted_by'] or '—' }}
-                </td>
-
-                <td>
-                    {{ m['submitted_at'] or '—' }}
-                </td>
-
-                <td>
-                    <span class="badge {{ m['status']|lower }}">
-                        {{ m['status'] }}
-                    </span>
-                </td>
-
-                <td>
-                    {{ m['remarks'] or '—' }}
-                </td>
-
-            </tr>
-
-            {% else %}
-
-            <tr>
-                <td colspan="9">
-                    No movement recorded.
-                </td>
-            </tr>
-
+    <div class="card-panel" style="padding-top:18px;">
+        <div class="meta-grid">
+            {% for l,v in [('Document',f.title),('Reference No.',f.reference_no or '—'),('Source LGA',f.lga),('LGI',f.lgi_name or '—'),('Receiving Official',f.received_by),('Received',f.received_at),('Current Location',f.current_location),('Priority',f.priority)] %}
+            <div class="meta-item"><small>{{l}}</small><b>{{v}}</b></div>
             {% endfor %}
-
-        </table>
-
-    </div>
-
-</div>
-
-
-<div class="section">
-
-    <h2>Audit Trail</h2>
-
-    <div class="timeline">
-
-        {% for a in audit %}
-
-        <div>
-
-            <b>{{ a['action'] }}</b>
-
-            <p>
-                {{ a['details'] }}
-            </p>
-
-            <small>
-                {{ a['created_at'] }}
-                · Official: {{ a['official'] }}
-            </small>
-
         </div>
 
-        {% endfor %}
-
+        {% if f.attachment %}
+        <div class="attachment-box">
+            <span>Electronic copy attached to this record</span>
+            <a href="{{ url_for('download',name=f.attachment) }}">Download File</a>
+        </div>
+        {% endif %}
     </div>
 
-</div>
+    {% if current_user['role'] in ['Administrator','Zonal Inspector'] and f.current_location=='Katsina Zonal Office' %}
+    <form class="card-panel" method="post" action="{{ url_for('forward',file_id=f.file_id) }}">
+        <h2>Forward File</h2>
+        <div style="background:#f7faf8; padding:12px 16px; border-radius:8px; margin-bottom:14px; font-size:12.5px; border:1px solid #e5eee9;">
+            <strong>Forwarding Official:</strong> {{ current_user['full_name'] }} 
+            <small style="display:block; color:#7a8a84; margin-top:2px;">Automatically recorded from your signed-in account.</small>
+        </div>
+        <div class="form-grid">
+            <label>Destination Branch<select name="to_location">{% for b in branches %}<option>{{b}}</option>{% endfor %}</select></label>
+            <label>Receiving Official<input name="receiving_officer" placeholder="Optional — branch officer"></label>
+            <label>Action / Purpose<input name="action" placeholder="e.g. For review / action"></label>
+        </div>
+        <label>Remarks<textarea name="remarks" placeholder="Add any forwarding notes..."></textarea></label>
+        <div style="margin-top:16px;"><button class="cta-btn">Record & Forward File</button></div>
+    </form>
+    {% elif current_user['role'] in ['Administrator','Zonal Inspector'] and f.status=='Forwarded' %}
+    <div class="card-panel" style="border-left:5px solid #d49a00; background:#fffaf0;">
+        <h2>Awaiting Physical Submission</h2>
+        <p style="margin:6px 0">The file has been assigned to <strong>{{ f.current_location }}</strong> but the Supporting Staff delivery confirmation has not yet been recorded.</p>
+        <small style="color:#7a8a84;">The responsible Supporting Staff member should confirm physical submission after delivery.</small>
+    </div>
+    {% elif f.status=='Submitted' %}
+    <div class="card-panel" style="border-left:5px solid #0b6b52; background:#f5faf8;">
+        <h2>Physical Submission Confirmed</h2>
+        <p style="margin:4px 0;">The file was physically submitted to <strong>{{ f.current_location }}</strong>.</p>
+        <small style="color:#7a8a84;">See Movement History and Audit Trail below for delivery details.</small>
+    </div>
+    {% endif %}
+
+    {% if current_user['role'] in ['Administrator','Zonal Inspector'] and f.status == 'Received' and f.current_location == 'Katsina Zonal Office' %}
+    <div class="card-panel" style="border-left:5px solid #d49a00; background:#fffaf0;">
+        <strong>Pending Zonal Review</strong>
+        <p style="margin:6px 0 0; color:#5a7369;">This file was registered by <strong>{{ f.received_by }}</strong> after receipt from <strong>{{ f.lga }}</strong>. Review the document and its attachment, then forward it to the appropriate Secretariat branch when ready.</p>
+    </div>
+    {% endif %}
+
+    <div class="card-panel">
+        <h2>Movement History</h2>
+        <p>Complete transfer log and routing timeline.</p>
+        <div class="table-container">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Forwarding Official</th>
+                        <th>Receiving Official</th>
+                        <th>Submitted By</th>
+                        <th>Submitted At</th>
+                        <th>Status</th>
+                        <th>Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in movements %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{m['forwarded_at']}}</td>
+                        <td>{{m['from_location']}}</td>
+                        <td style="white-space: nowrap;">{{m['to_location']}}</td>
+                        <td>{{m['forwarded_by']}}</td>
+                        <td>{{m['receiving_officer'] or '—'}}</td>
+                        <td>{{m['submitted_by'] or '—'}}</td>
+                        <td style="white-space: nowrap;">{{m['submitted_at'] or '—'}}</td>
+                        <td><span class="status-badge {{m['status']|lower}}">{{m['status']}}</span></td>
+                        <td>{{m['remarks'] or '—'}}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" style="text-align:center; padding:24px; color:#7a8a84;">No movement recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card-panel">
+        <h2>Audit Trail</h2>
+        <p>System security and administrative action logs.</p>
+        <div class="audit-timeline">
+            {% for a in audit %}
+            <div class="audit-box">
+                <b>{{a['action']}}</b>
+                <p>{{a['details']}}</p>
+                <div class="audit-meta">{{a['created_at']}} · Official: {{a['official']}}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 
 {% endif %}
-
+</div>
 {% endblock %}
