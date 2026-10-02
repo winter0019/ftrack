@@ -152,7 +152,7 @@ body {
   cursor: pointer;
 }
 
-/* Main content: centered and prevented from stretching excessively */
+/* Main content */
 .wrap {
   width: min(1440px, calc(100% - 56px));
   min-height: calc(100vh - 145px);
@@ -254,7 +254,6 @@ body {
   color: #9d3025;
 }
 
-/* Mobile user/account row */
 .mobile-account { display: none; }
 
 footer {
@@ -356,31 +355,18 @@ body { width: 100%; max-width: 100%; overflow-x: clip; }
 img, video, iframe, canvas, svg { max-width: 100%; }
 .wrap, .wrap * { min-width: 0; }
 .wrap { max-width: 1440px; }
-.wrap input, .wrap select, .wrap textarea, .wrap button {
-  max-width: 100%;
-}
+.wrap input, .wrap select, .wrap textarea, .wrap button { max-width: 100%; }
 .wrap input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-.wrap select, .wrap textarea {
-  min-width: 0;
-}
+.wrap select, .wrap textarea { min-width: 0; }
 .wrap form { max-width: 100%; }
-.wrap table {
-  width: 100%;
-  border-collapse: collapse;
-}
+.wrap table { width: 100%; border-collapse: collapse; }
 .wrap .table, .wrap .records-wrap, .wrap .table-wrap,
 .wrap .table-responsive, .wrap .overflow-x-auto {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  display: block; width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 .wrap table { max-width: 100%; }
 .wrap th, .wrap td { overflow-wrap: anywhere; }
-.wrap .section, .wrap .card, .wrap .stat, .wrap .branches > a {
-  overflow-wrap: anywhere;
-}
+.wrap .section, .wrap .card, .wrap .stat, .wrap .branches > a { overflow-wrap: anywhere; }
 .wrap .head > *, .wrap .section > *, .wrap form > * { max-width: 100%; }
 
 @media (max-width: 760px) {
@@ -403,20 +389,14 @@ img, video, iframe, canvas, svg { max-width: 100%; }
   .wrap .branches { grid-template-columns: 1fr !important; }
   .wrap form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
   .wrap form label { max-width: 100%; }
-  .wrap form input, .wrap form select, .wrap form textarea {
-    width: 100%;
-    max-width: 100%;
-  }
+  .wrap form input, .wrap form select, .wrap form textarea { width: 100%; max-width: 100%; }
   .wrap form button, .wrap form .cta { max-width: 100%; }
   .wrap .table table, .wrap .records-wrap table,
   .wrap .table-wrap table, .wrap .table-responsive table {
-    min-width: 680px;
-    width: max-content;
+    min-width: 680px; width: max-content;
   }
   footer {
-    width: calc(100% - 28px) !important;
-    max-width: calc(100% - 28px) !important;
-    overflow-wrap: anywhere;
+    width: calc(100% - 28px) !important; max-width: calc(100% - 28px) !important; overflow-wrap: anywhere;
   }
 }
 @media (max-width: 420px) {
