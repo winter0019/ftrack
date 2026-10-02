@@ -24,7 +24,7 @@ body {
 }
 .top {
   position: relative;
-  z-index: 10;
+  z-index: 100;
   width: 100%;
   min-height: 78px;
   padding: 12px clamp(16px, 3vw, 38px);
@@ -288,21 +288,25 @@ footer {
   .menu { display: block; }
   .top nav {
     display: none !important;
-    position: relative;
-    z-index: 20;
-    order: 3;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 200;
     width: 100%;
     margin: 0;
-    padding: 10px 0 4px;
+    padding: 16px 20px 22px;
     align-items: stretch;
     flex-direction: column;
-    gap: 4px;
-    border-top: 1px solid #ffffff25;
+    gap: 8px;
+    background: #064a38;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.3);
   }
   .top nav.is-open,
   .top.menu-open nav,
   body.open .top nav { display: flex !important; }
-  .top nav > a { padding: 10px 8px; white-space: normal; }
+  .top nav > a { padding: 10px 12px; white-space: normal; border-radius: 6px; }
+  .top nav > a:hover { background: rgba(255,255,255,0.08); }
   .top nav > a.cta { justify-content: flex-start; }
   .account { display: none; }
   .mobile-account {
@@ -346,8 +350,7 @@ footer {
   .wrap .head h1 { font-size: 25px; }
 }
 
-/* Cross-page responsive safeguards: prevent wide forms/tables from widening
-   the entire mobile page. These rules intentionally override legacy styles. */
+/* Cross-page responsive safeguards */
 html { width: 100%; max-width: 100%; overflow-x: clip; }
 body { width: 100%; max-width: 100%; overflow-x: clip; }
 img, video, iframe, canvas, svg { max-width: 100%; }
@@ -518,7 +521,8 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     toggle.setAttribute("aria-label", "Open navigation menu");
   }
 
-  toggle.addEventListener("click", function () {
+  toggle.addEventListener("click", function (e) {
+    e.stopPropagation();
     const isOpen = !nav.classList.contains("is-open");
     nav.classList.toggle("is-open", isOpen);
     header.classList.toggle("menu-open", isOpen);
@@ -529,6 +533,12 @@ img, video, iframe, canvas, svg { max-width: 100%; }
 
   nav.querySelectorAll("a").forEach(function (link) {
     link.addEventListener("click", closeMenu);
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!header.contains(event.target)) {
+      closeMenu();
+    }
   });
 
   document.addEventListener("keydown", function (event) {
