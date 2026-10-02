@@ -26,37 +26,40 @@
     white-space: nowrap; transition: background .15s ease;
 }
 .dash .dash-btn:hover { background: #087a51; }
+
+/* Compact Statistics Cards Grid */
 .dash .stats-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 12px;
-    margin: 0 0 22px;
+    gap: 10px;
+    margin: 0 0 18px;
     align-items: stretch;
 }
 .dash .stat-card {
     min-width: 0;
     min-height: 0;
-    padding: 13px 16px;
+    padding: 10px 14px;
     background: #fff;
     border: 1px solid #e0eae5;
-    border-radius: 12px;
-    box-shadow: 0 3px 10px #173d2c06;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px #173d2c05;
 }
 .dash .stat-label {
     display: block;
     color: #71827b;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    line-height: 1.4;
+    line-height: 1.3;
 }
 .dash .stat-value {
     display: block;
-    margin-top: 5px;
-    font-size: 27px;
-    line-height: 1.05;
+    margin-top: 3px;
+    font-size: 22px;
+    line-height: 1.1;
     font-weight: 850;
     color: #07543f;
 }
+
 .dash .panel {
     background: #fff; border: 1px solid #e0eae5; border-radius: 15px;
     padding: 23px; margin-bottom: 25px;
@@ -140,17 +143,17 @@
     .dash .dash-head { align-items: flex-start; gap: 15px; }
     .dash .dash-head .dash-btn { width: 100%; }
     .dash .stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
-    .dash .stat-card { padding: 12px 13px; }
+    .dash .stat-card { padding: 10px 12px; }
     .dash .stat-label { font-size: 11px; }
-    .dash .stat-value { font-size: 24px; }
+    .dash .stat-value { font-size: 20px; }
     .dash .panel { padding: 16px; margin-bottom: 18px; }
     .dash .branch-grid, .dash .work-grid { grid-template-columns: 1fr; gap: 10px; }
     .dash h2 { font-size: 19px; }
 }
 @media (max-width: 360px) {
     .dash .stats-grid { grid-template-columns: 1fr 1fr; }
-    .dash .stat-card { padding: 12px; }
-    .dash .stat-label { font-size: 11px; }
+    .dash .stat-card { padding: 10px; }
+    .dash .stat-label { font-size: 10.5px; }
 }
 </style>
 
