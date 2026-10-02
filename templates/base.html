@@ -435,10 +435,7 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
-
-    {% if current_user and current_user['role'] in ['Administrator', 'Zonal Inspector', 'Supporting Staff'] %}
-      <a href="{{ url_for('inspections') }}">Inspection</a>
-    {% endif %}
+    <a href="{{ url_for('inspections') }}">Inspection</a>
 
     {% if current_user and current_user['role']=='Administrator' %}
       <a class="admin-link" href="{{ url_for('users') }}">Officials</a>
