@@ -1,306 +1,981 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | KATZIMS{% endblock %}
-
+{% block title %}Dashboard | NYSC Katsina Zonal Office{% endblock %}
 {% block content %}
-<style>
-/* Dashboard styles are scoped to avoid changing other pages */
-.dash { max-width: 1500px; margin: 0 auto; padding: 8px 0 32px; color: #18332d; }
-.dash * { box-sizing: border-box; }
-.dash .dash-head {
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 24px; flex-wrap: wrap; margin-bottom: 26px;
-}
-.dash .eyebrow {
-    color: #16815b; font-size: 11px; font-weight: 800;
-    letter-spacing: .12em; margin-bottom: 8px;
-}
-.dash h1 { margin: 0; font-size: clamp(27px,3vw,36px); line-height: 1.2; letter-spacing: -.035em; }
-.dash h2 { margin: 0; font-size: 21px; line-height: 1.35; }
-.dash p { color: #667973; line-height: 1.65; margin: 9px 0 0; }
-.dash .dash-head p { max-width: 720px; }
-.dash .dash-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    gap: 8px; min-height: 45px; padding: 12px 18px;
-    border-radius: 10px; background: #0d9664; color: #fff;
-    text-decoration: none; font-weight: 750; border: 1px solid #0d9664;
-    white-space: nowrap; transition: background .15s ease;
-}
-.dash .dash-btn:hover { background: #087a51; }
 
-/* Compact Statistics Cards Grid */
-.dash .stats-grid {
+<style>
+/* Dashboard layout fix — scoped to this page */
+.dashboard-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 44px 30px 72px;
+}
+
+.dashboard-page .dashboard-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 30px;
+    margin-bottom: 34px;
+}
+
+.dashboard-page .eyebrow {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    opacity: .72;
+}
+
+.dashboard-page h1 {
+    margin: 0 0 12px;
+    font-size: clamp(34px, 4vw, 54px);
+    line-height: 1.05;
+}
+
+.dashboard-page .intro {
+    max-width: 780px;
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.6;
+    opacity: .78;
+}
+
+.dashboard-page .dashboard-cta {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    padding: 0 25px;
+    border-radius: 14px;
+    text-decoration: none;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.dashboard-page .dashboard-stats {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
-    margin: 0 0 18px;
-    align-items: stretch;
+    gap: 18px;
+    margin-bottom: 42px;
 }
-.dash .stat-card {
-    min-width: 0;
-    min-height: 0;
-    padding: 10px 14px;
-    background: #fff;
-    border: 1px solid #e0eae5;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px #173d2c05;
+
+.dashboard-page .dashboard-stat {
+    min-height: 124px;
+    padding: 24px 22px;
+    border: 1px solid #e1e9e6;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 22px rgba(20,50,45,.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
-.dash .stat-label {
+
+.dashboard-page .dashboard-stat small {
+    font-size: 14px;
+    line-height: 1.35;
+    opacity: .72;
+}
+
+.dashboard-page .dashboard-stat strong {
     display: block;
-    color: #71827b;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.3;
+    margin-top: 18px;
+    font-size: 42px;
+    line-height: 1;
 }
-.dash .stat-value {
+
+.dashboard-page .dashboard-section {
+    margin-bottom: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.dashboard-page .dashboard-section h2 {
+    margin: 0 0 10px;
+    font-size: 25px;
+}
+
+.dashboard-page .section-description {
+    margin: 0 0 22px;
+    opacity: .75;
+    line-height: 1.55;
+}
+
+.dashboard-page .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.dashboard-page .dashboard-card {
     display: block;
-    margin-top: 3px;
-    font-size: 22px;
-    line-height: 1.1;
-    font-weight: 850;
-    color: #07543f;
+    min-height: 128px;
+    padding: 24px;
+    border: 1px solid #e1e9e6;
+    border-radius: 17px;
+    text-decoration: none;
+    background: #ffffff;
+    box-shadow: 0 7px 20px rgba(20,50,45,.035);
+    transition: transform .15s ease, border-color .15s ease;
 }
 
-.dash .panel {
-    background: #fff; border: 1px solid #e0eae5; border-radius: 15px;
-    padding: 23px; margin-bottom: 25px;
-    box-shadow: 0 4px 15px #173d2c08; min-width: 0;
+.dashboard-page .dashboard-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(50,179,125,.65);
 }
-.dash .panel-heading {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
-}
-.dash .panel-description { margin: 5px 0 18px; }
-.dash .branch-grid, .dash .work-grid {
-    display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
-    gap: 15px; margin-top: 18px;
-}
-.dash .branch-card, .dash .work-card {
-    display: flex; align-items: center; gap: 14px; min-width: 0;
-    padding: 18px; border: 1px solid #dce9e2; border-radius: 12px;
-    color: #183d30; background: #fbfdfc; text-decoration: none;
-    transition: border-color .15s ease, transform .15s ease, background .15s ease;
-}
-.dash .branch-card:hover, .dash .work-card:hover {
-    border-color: #8cc9ae; background: #f3faf6; transform: translateY(-2px);
-}
-.dash .tile-icon {
-    width: 43px; height: 43px; flex: 0 0 43px;
-    display: grid; place-items: center; border-radius: 12px;
-    background: #e4f4eb; color: #08734e; font-size: 20px; font-weight: 800;
-}
-.dash .tile-copy { min-width: 0; flex: 1; }
-.dash .tile-copy b { display: block; font-size: 14px; overflow-wrap: anywhere; }
-.dash .tile-copy span { display: block; margin-top: 5px; font-size: 12px; color: #72827b; line-height: 1.45; }
-.dash .tile-arrow { color: #0c8b5c; font-size: 20px; }
-.dash .table-wrap { width: 100%; overflow-x: auto; }
 
-/* Fixed Table Layout & Explicit Column Proportions */
-.dash table { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 13px; table-layout: fixed; }
-.dash th {
-    padding: 13px 14px; text-align: left; white-space: nowrap;
-    color: #5e7169; background: #f4f8f6; font-size: 11px;
-    letter-spacing: .04em; text-transform: uppercase;
-    border-bottom: 1px solid #e0eae5;
+.dashboard-page .dashboard-card b {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 19px;
 }
-.dash td { padding: 14px; border-bottom: 1px solid #edf2ef; vertical-align: middle; word-wrap: break-word; overflow-wrap: break-word; }
 
-/* Strict Column Width Allocations */
-.dash th:nth-child(1), .dash td:nth-child(1) { width: 16%; } /* File ID */
-.dash th:nth-child(2), .dash td:nth-child(2) { width: 34%; } /* Document */
-.dash th:nth-child(3), .dash td:nth-child(3) { width: 16%; } /* Source */
-.dash th:nth-child(4), .dash td:nth-child(4) { width: 18%; } /* Current Location */
-.dash th:nth-child(5), .dash td:nth-child(5) { width: 16%; } /* Status */
+.dashboard-page .dashboard-card span {
+    display: block;
+    opacity: .68;
+    line-height: 1.45;
+}
 
-.dash tbody tr:last-child td { border-bottom: 0; }
-.dash tbody tr:hover { background: #fbfdfc; }
-.dash .file-link { color: #087b53; font-weight: 750; text-decoration: none; white-space: nowrap; }
-.dash .file-link:hover { text-decoration: underline; }
-.dash .doc-title { display: block; color: #263e35; font-weight: 750; line-height: 1.3; }
-.dash .subtext { display: block; color: #7a8983; font-size: 11px; margin-top: 4px; word-break: break-all; }
-.dash .status {
-    display: inline-flex; align-items: center; border-radius: 20px;
-    padding: 5px 9px; font-size: 11px; font-weight: 750;
-    background: #eaf3ef; color: #376b55; white-space: nowrap;
+.dashboard-page .dashboard-card .arrow {
+    margin-top: 18px;
+    font-weight: 800;
+    opacity: 1;
 }
-.dash .status.received { background: #e6f5ed; color: #147347; }
-.dash .status.submitted { background: #fff4dc; color: #946514; }
-.dash .status.returned { background: #fff0ee; color: #a13c32; }
-.dash .empty { padding: 28px 15px; text-align: center; color: #788982; }
-.dash .restricted-note {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 20px; flex-wrap: wrap; background: #f0f8f3;
-    border: 1px solid #d5eade; border-radius: 12px; padding: 20px;
+
+.dashboard-page .branch-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
 }
-.dash .restricted-note p { margin-top: 5px; }
-.dash .note-label { color: #138258; font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+
+.dashboard-page .branch-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    padding: 25px;
+    border: 1px solid #e1e9e6;
+    border-radius: 17px;
+    text-decoration: none;
+    background: #ffffff;
+    box-shadow: 0 7px 20px rgba(20,50,45,.035);
+}
+
+.dashboard-page .branch-card span {
+    opacity: .65;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.dashboard-page .records-wrap {
+    overflow-x: auto;
+    border: 1px solid #e1e9e6;
+    border-radius: 17px;
+    background: #ffffff;
+    box-shadow: 0 7px 20px rgba(20,50,45,.035);
+}
+
+.dashboard-page .records-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+}
+
+.dashboard-page .records-table th,
+.dashboard-page .records-table td {
+    padding: 16px 18px;
+    text-align: left;
+    border-bottom: 1px solid rgba(127,127,127,.18);
+    vertical-align: middle;
+}
+
+.dashboard-page .records-table th {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    opacity: .68;
+}
+
+.dashboard-page .records-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.dashboard-page .document-cell b,
+.dashboard-page .document-cell small {
+    display: block;
+}
+
+.dashboard-page .document-cell small {
+    margin-top: 4px;
+    opacity: .58;
+}
+
+.dashboard-page .status-badge {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    background: rgba(50,179,125,.12);
+}
 
 @media (max-width: 1050px) {
-    .dash .stats-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
-    .dash .branch-grid, .dash .work-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .dashboard-page .dashboard-stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-page .dashboard-grid,
+    .dashboard-page .branch-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
-@media (max-width: 650px) {
-    .dash { padding-top: 2px; }
-    .dash .dash-head { align-items: flex-start; gap: 15px; }
-    .dash .dash-head .dash-btn { width: 100%; }
-    .dash .stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
-    .dash .stat-card { padding: 10px 12px; }
-    .dash .stat-label { font-size: 11px; }
-    .dash .stat-value { font-size: 20px; }
-    .dash .panel { padding: 16px; margin-bottom: 18px; }
-    .dash .branch-grid, .dash .work-grid { grid-template-columns: 1fr; gap: 10px; }
-    .dash h2 { font-size: 19px; }
+
+@media (max-width: 760px) {
+    .dashboard-page {
+        padding: 28px 18px 50px;
+    }
+
+    .dashboard-page .dashboard-head {
+        flex-direction: column;
+    }
+
+    .dashboard-page .dashboard-cta {
+        width: 100%;
+    }
+
+    .dashboard-page .dashboard-stats,
+    .dashboard-page .dashboard-grid,
+    .dashboard-page .branch-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-page .dashboard-stat {
+        min-height: 120px;
+    }
+
+    .dashboard-page .dashboard-section {
+        padding: 20px;
+    }
 }
-@media (max-width: 360px) {
-    .dash .stats-grid { grid-template-columns: 1fr 1fr; }
-    .dash .stat-card { padding: 10px; }
-    .dash .stat-label { font-size: 10.5px; }
+
+/* Final Render reference alignment */
+@media (min-width: 1101px) {
+    .dashboard-page {
+        width: 100%;
+        max-width: none;
+        padding-left: 30px;
+        padding-right: 30px;
+    }
+
+    .dashboard-page .dashboard-stats {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branch-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .dashboard-section > h2 {
+        margin-bottom: 14px;
+    }
+
+    .dashboard-page .dashboard-section .section-description {
+        margin-bottom: 10px;
+    }
+
+    .dashboard-page .dashboard-section {
+        margin-bottom: 30px;
+    }
 }
+
+
+.dashboard-page .dashboard-flat-section {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+
+/* Compact sizing — match the deployed Render dashboard */
+.dashboard-page {
+    padding: 34px 30px 58px !important;
+}
+
+.dashboard-page .head {
+    margin-bottom: 26px !important;
+}
+
+.dashboard-page h1 {
+    font-size: clamp(34px, 3.2vw, 46px) !important;
+    line-height: 1.08 !important;
+    margin-bottom: 9px !important;
+}
+
+.dashboard-page .intro {
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+}
+
+.dashboard-page .dashboard-stats {
+    gap: 14px !important;
+    margin-bottom: 32px !important;
+}
+
+.dashboard-page .dashboard-stat {
+    min-height: 116px !important;
+    padding: 21px 21px !important;
+    border-radius: 16px !important;
+}
+
+.dashboard-page .dashboard-stat small {
+    font-size: 13px !important;
+}
+
+.dashboard-page .dashboard-stat strong {
+    margin-top: 13px !important;
+    font-size: 36px !important;
+}
+
+.dashboard-page .dashboard-section {
+    margin-bottom: 27px !important;
+}
+
+.dashboard-page .dashboard-section h2 {
+    font-size: 23px !important;
+    line-height: 1.2 !important;
+    margin-bottom: 8px !important;
+}
+
+.dashboard-page .section-description {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+    margin-bottom: 13px !important;
+}
+
+.dashboard-page .dashboard-card {
+    min-height: 108px !important;
+    padding: 20px !important;
+    border-radius: 15px !important;
+}
+
+.dashboard-page .dashboard-card b {
+    font-size: 17px !important;
+    margin-bottom: 7px !important;
+}
+
+.dashboard-page .dashboard-card span {
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+}
+
+.dashboard-page .dashboard-card .arrow {
+    margin-top: 12px !important;
+}
+
+.dashboard-page .branch-card {
+    padding: 19px 21px !important;
+    border-radius: 15px !important;
+}
+
+.dashboard-page .branch-card strong {
+    font-size: 18px !important;
+}
+
+.dashboard-page .branch-card span {
+    font-size: 14px !important;
+}
+
+.dashboard-page .records-table {
+    min-width: 760px !important;
+}
+
+.dashboard-page .records-table th,
+.dashboard-page .records-table td {
+    padding: 13px 17px !important;
+}
+
+.dashboard-page .records-table th {
+    font-size: 11px !important;
+}
+
+.dashboard-page .records-table td {
+    font-size: 14px !important;
+}
+
+.dashboard-page .document-cell small {
+    font-size: 12px !important;
+}
+
+.dashboard-page .status-badge {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+}
+
+.dashboard-page .cta {
+    font-size: 15px !important;
+    padding: 13px 21px !important;
+    border-radius: 12px !important;
+}
+
+@media (min-width: 1101px) {
+    .dashboard-page .dashboard-stats {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branch-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+}
+
+
+/* =========================================================
+   EXACT RENDER REFERENCE — FINAL COMPACT OVERRIDES
+   ========================================================= */
+.dashboard-page {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 38px 30px 62px !important;
+}
+
+.dashboard-page .head {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    gap: 28px !important;
+    margin-bottom: 31px !important;
+}
+
+.dashboard-page .head h1 {
+    font-size: 44px !important;
+    line-height: 1.08 !important;
+    margin: 0 0 10px !important;
+    letter-spacing: -.025em !important;
+}
+
+.dashboard-page .head small {
+    font-size: 12px !important;
+    letter-spacing: .13em !important;
+    font-weight: 800 !important;
+}
+
+.dashboard-page .head p {
+    font-size: 17px !important;
+    line-height: 1.45 !important;
+    margin: 0 !important;
+    color: #70818a !important;
+}
+
+.dashboard-page .head .cta {
+    flex: 0 0 auto !important;
+    margin-top: 3px !important;
+    padding: 14px 23px !important;
+    min-height: 53px !important;
+    font-size: 15px !important;
+    border-radius: 13px !important;
+}
+
+/* EXACTLY FIVE COMPACT STAT CARDS */
+.dashboard-page .stats {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 18px !important;
+    margin: 0 0 42px !important;
+}
+
+.dashboard-page .stat {
+    min-width: 0 !important;
+    height: 124px !important;
+    padding: 24px 22px !important;
+    border: 1px solid #e2e9e7 !important;
+    border-radius: 18px !important;
+    background: #fff !important;
+    box-shadow: 0 7px 20px rgba(20,50,45,.045) !important;
+}
+
+.dashboard-page .stat small {
+    display: block !important;
+    font-size: 14px !important;
+    line-height: 1.25 !important;
+    color: #71818a !important;
+}
+
+.dashboard-page .stat strong {
+    display: block !important;
+    margin-top: 16px !important;
+    font-size: 38px !important;
+    line-height: 1 !important;
+    font-weight: 800 !important;
+    color: #172a34 !important;
+}
+
+/* FLAT INSPECTION SECTION */
+.dashboard-page .section {
+    margin: 0 0 28px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.dashboard-page .section h2 {
+    margin: 0 0 10px !important;
+    font-size: 24px !important;
+    line-height: 1.2 !important;
+}
+
+.dashboard-page .section > p {
+    margin: 0 0 10px !important;
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+}
+
+/* BRANCHES — THREE CARDS IN ONE ROW */
+.dashboard-page .branches {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px !important;
+    margin-top: 14px !important;
+}
+
+.dashboard-page .branches > a {
+    min-height: 86px !important;
+    padding: 22px 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 14px !important;
+    border: 1px solid #e2e9e7 !important;
+    border-radius: 16px !important;
+    background: #fff !important;
+    box-shadow: 0 7px 20px rgba(20,50,45,.04) !important;
+    text-decoration: none !important;
+}
+
+.dashboard-page .branches > a b {
+    color: #08784f !important;
+    font-size: 19px !important;
+}
+
+.dashboard-page .branches > a span {
+    color: #70818a !important;
+    font-size: 14px !important;
+}
+
+/* RECENT RECORDS */
+.dashboard-page .table {
+    width: 100% !important;
+    overflow-x: auto !important;
+    margin-top: 14px !important;
+    border: 1px solid #e2e9e7 !important;
+    border-radius: 16px !important;
+    background: #fff !important;
+    box-shadow: 0 7px 20px rgba(20,50,45,.04) !important;
+}
+
+.dashboard-page .table table {
+    width: 100% !important;
+    min-width: 820px !important;
+    border-collapse: collapse !important;
+}
+
+.dashboard-page .table th {
+    padding: 17px 18px !important;
+    background: #f5f8f7 !important;
+    color: #687a83 !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    letter-spacing: .06em !important;
+    text-align: left !important;
+    text-transform: uppercase !important;
+}
+
+.dashboard-page .table td {
+    padding: 17px 18px !important;
+    border-top: 1px solid #edf1ef !important;
+    font-size: 15px !important;
+    vertical-align: middle !important;
+}
+
+.dashboard-page .table td a {
+    color: #08784f !important;
+    font-weight: 800 !important;
+}
+
+.dashboard-page .table td b {
+    display: block !important;
+    font-size: 15px !important;
+}
+
+.dashboard-page .table td small {
+    display: block !important;
+    margin-top: 4px !important;
+    color: #8a999f !important;
+    font-size: 12px !important;
+}
+
+.dashboard-page .badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 6px 11px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+}
+
+/* Keep the LGI and Supporting Staff cards compact too */
+.dashboard-page .dashboard-card {
+    min-height: 120px !important;
+    padding: 21px !important;
+}
+
+.dashboard-page .dashboard-card b {
+    font-size: 17px !important;
+}
+
+.dashboard-page .dashboard-card span {
+    font-size: 14px !important;
+}
+
+/* Desktop reference */
+@media (min-width: 1101px) {
+    .dashboard-page .stats {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branches {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 1100px) {
+    .dashboard-page .stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branches {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .dashboard-page {
+        padding: 28px 18px 50px !important;
+    }
+
+    .dashboard-page .head {
+        flex-direction: column !important;
+    }
+
+    .dashboard-page .head .cta {
+        width: 100% !important;
+    }
+
+    .dashboard-page .stats,
+    .dashboard-page .branches {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* =========================================================
+   FINAL DESKTOP LAYOUT FIX
+   Keep the dashboard compact and prevent 5-card / 3-branch
+   grids from wrapping on normal desktop screens.
+   ========================================================= */
+
+.dashboard-page {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 34px 30px 58px !important;
+}
+
+/* The reference desktop uses all five statistics in one row.
+   Do not let the 5 cards collapse at the 1100px breakpoint. */
+@media (min-width: 850px) {
+    .dashboard-page .stats {
+        display: grid !important;
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+        gap: 18px !important;
+    }
+
+    .dashboard-page .branches {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 18px !important;
+    }
+}
+
+/* Match the supplied Render screenshot proportions. */
+@media (min-width: 850px) {
+    .dashboard-page .head h1 {
+        font-size: 42px !important;
+    }
+
+    .dashboard-page .head p {
+        font-size: 16px !important;
+    }
+
+    .dashboard-page .stat {
+        height: 124px !important;
+        min-height: 124px !important;
+        padding: 23px 21px !important;
+    }
+
+    .dashboard-page .stat strong {
+        font-size: 37px !important;
+    }
+
+    .dashboard-page .section h2 {
+        font-size: 24px !important;
+    }
+
+    .dashboard-page .branches > a {
+        min-height: 86px !important;
+        padding: 21px 23px !important;
+    }
+}
+
+/* At genuinely narrow/tablet widths, allow natural stacking. */
+@media (max-width: 849px) {
+    .dashboard-page .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branches {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 600px) {
+    .dashboard-page .stats {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* =========================================================
+   CORRECT SELECTORS — FINAL RENDER DESKTOP MATCH
+   The Administrator / ZI dashboard uses .dashboard-stats
+   and .branch-grid (not .stats / .branches).
+   ========================================================= */
+
+@media (min-width: 850px) {
+    .dashboard-page .dashboard-stats {
+        display: grid !important;
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+        gap: 18px !important;
+        margin-bottom: 42px !important;
+    }
+
+    .dashboard-page .dashboard-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branch-grid {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 14px !important;
+    }
+
+    .dashboard-page .dashboard-stat {
+        min-width: 0 !important;
+        min-height: 124px !important;
+        height: 124px !important;
+        padding: 23px 21px !important;
+    }
+
+    .dashboard-page .dashboard-stat strong {
+        font-size: 37px !important;
+    }
+
+    .dashboard-page .branch-card {
+        min-width: 0 !important;
+        min-height: 86px !important;
+        padding: 21px 23px !important;
+    }
+}
+
+/* Only genuinely narrow screens should stack the cards. */
+@media (max-width: 849px) {
+    .dashboard-page .dashboard-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-page .branch-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 600px) {
+    .dashboard-page .dashboard-stats {
+        grid-template-columns: 1fr !important;
+    }
+}
+
 </style>
 
-<div class="dash">
 
-{% if current_user['role'] == 'Supporting Staff' %}
+<div class="dashboard-page">
 
-    <header class="dash-head">
+{% if current_user['role'] == 'LGI Officer' %}
+
+    <div class="dashboard-head">
         <div>
-            <div class="eyebrow">REGISTRY, DELIVERY &amp; INSPECTION CONTROL</div>
-            <h1>Supporting Staff Dashboard</h1>
-            <p>Register incoming files, search records, carry out assigned inspections and confirm physical submission.</p>
+            <span class="eyebrow">Local Government Inspectorate</span>
+            <h1>LGI Dashboard</h1>
+            <p class="intro">
+                Send official files to the Zonal Office and receive inspection reports
+                issued by the Zonal Inspector for {{ current_user['lga'] or 'your LGA' }}.
+            </p>
         </div>
-        <a class="dash-btn" href="{{ url_for('receive') }}">＋ Register New File</a>
-    </header>
+        <a class="cta dashboard-cta" href="{{ url_for('lgi_send_file') }}">
+            ＋ Send File to ZI Office
+        </a>
+    </div>
 
-    <section class="stats-grid" aria-label="File statistics">
-        <div class="stat-card"><span class="stat-label">Files Registered</span><strong class="stat-value">{{ stats.get('Total',0) if stats is defined else 0 }}</strong></div>
-        <div class="stat-card"><span class="stat-label">Awaiting Zonal Review</span><strong class="stat-value">{{ stats.get('Received',0) if stats is defined else 0 }}</strong></div>
-        <div class="stat-card"><span class="stat-label">Awaiting Physical Submission</span><strong class="stat-value">{{ stats.get('Forwarded',0) if stats is defined else 0 }}</strong></div>
-        <div class="stat-card"><span class="stat-label">Submitted</span><strong class="stat-value">{{ stats.get('Submitted',0) if stats is defined else 0 }}</strong></div>
-        <div class="stat-card"><span class="stat-label">My Inspections</span><strong class="stat-value">{{ my_inspections|default(0) }}</strong></div>
-    </section>
+    <div class="dashboard-section">
+        <div class="dashboard-section-box">
+            <span class="eyebrow">Reports From Zonal Inspector</span>
+            <h2>Inspection Reports</h2>
+            <p class="section-description">
+                {{ (lgi_reports|default([]))|length }} inspection report{{ '' if (lgi_reports|default([]))|length == 1 else 's' }} available for your LGA.
+            </p>
+            <a class="cta dashboard-cta" href="{{ url_for('reports') }}">View Inspection Reports →</a>
+        </div>
+    </div>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>Supporting Staff Work Areas</h2></div>
-        <p class="panel-description">Choose an area to continue your assigned work.</p>
-        <div class="work-grid">
-            <a class="work-card" href="{{ url_for('supporting_file_search') }}">
-                <span class="tile-icon">⌕</span>
-                <span class="tile-copy"><b>File Search</b><span>Search by State Code, reference number or File ID.</span></span>
-                <span class="tile-arrow">→</span>
+    <div class="dashboard-section">
+        <h2>LGI Work Areas</h2>
+        <p class="section-description">Access the functions available to your Local Government Inspectorate office.</p>
+        <div class="dashboard-grid">
+            <a class="dashboard-card" href="{{ url_for('lgi_send_file') }}">
+                <b>Send File to ZI Office</b>
+                <span>Submit an official file or document to the Zonal Inspector.</span>
+                <span class="arrow">Open →</span>
             </a>
-            <a class="work-card" href="{{ url_for('receive') }}">
-                <span class="tile-icon">＋</span>
-                <span class="tile-copy"><b>Register New File</b><span>Register a file received from an LGI.</span></span>
-                <span class="tile-arrow">→</span>
-            </a>
-            <a class="work-card" href="{{ url_for('inspections') }}">
-                <span class="tile-icon">☑</span>
-                <span class="tile-copy"><b>Inspections</b><span>Open assigned PPA inspections and reports.</span></span>
-                <span class="tile-arrow">→</span>
+            <a class="dashboard-card" href="{{ url_for('reports') }}">
+                <b>Inspection Reports</b>
+                <span>Receive reports issued by the Zonal Inspector for your LGA.</span>
+                <span class="arrow">Open →</span>
             </a>
         </div>
-    </section>
+    </div>
 
-    <section class="panel">
-        <div class="restricted-note">
-            <div>
-                <div class="note-label">RESTRICTED FILE ACCESS</div>
-                <h2 style="margin-top:5px;">Search File Records</h2>
-                <p>Open the limited file view available to Supporting Staff. Movement history and restricted registry details remain protected.</p>
+    <div class="dashboard-section">
+        <h2>Latest Inspection Reports</h2>
+        {% if lgi_reports|default([]) %}
+        <div class="dashboard-grid">
+            {% for r in lgi_reports %}
+            <div class="dashboard-card">
+                <b>{{ r['subject'] or 'Inspection Report' }}</b>
+                <span>{{ r['report_type'] or 'General LGA Report' }}</span>
+                <span>{{ r['issued_at'] or '—' }}</span>
             </div>
-            <a class="dash-btn" href="{{ url_for('supporting_file_search') }}">Search Files →</a>
+            {% endfor %}
         </div>
-    </section>
+        {% else %}
+        <div class="dashboard-section-box">
+            <p class="section-description" style="margin:0;">No inspection reports have been issued to your LGA yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+{% elif current_user['role'] == 'Supporting Staff' %}
+
+    <div class="dashboard-head">
+        <div>
+            <span class="eyebrow">Registry, Delivery &amp; Inspection Control</span>
+            <h1>Supporting Staff Dashboard</h1>
+            <p class="intro">Register incoming files, search by State Code or File ID, carry out assigned inspections, and confirm physical submission.</p>
+        </div>
+        <a class="cta dashboard-cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+    </div>
+
+    <div class="dashboard-stats">
+        <div class="dashboard-stat"><small>Files Registered</small><strong>{{ stats.get('Total',0) }}</strong></div>
+        <div class="dashboard-stat"><small>Awaiting Zonal Review</small><strong>{{ stats.get('Received',0) }}</strong></div>
+        <div class="dashboard-stat"><small>Awaiting Physical Submission</small><strong>{{ stats.get('Forwarded',0) }}</strong></div>
+        <div class="dashboard-stat"><small>Submitted</small><strong>{{ stats.get('Submitted',0) }}</strong></div>
+        <div class="dashboard-stat"><small>My Inspections</small><strong>{{ my_inspections|default(0) }}</strong></div>
+    </div>
+
+    <div class="dashboard-section">
+        <h2>Supporting Staff Work Areas</h2>
+        <p class="section-description">Access only the functions assigned to Supporting Staff.</p>
+        <div class="dashboard-grid">
+            <a class="dashboard-card" href="{{ url_for('supporting_file_search') }}"><b>File Search</b><span>Search by State Code, Reference No. or File ID.</span><span class="arrow">Open →</span></a>
+            <a class="dashboard-card" href="{{ url_for('receive') }}"><b>Register New File</b><span>Receive and register a file submitted by an LGI.</span><span class="arrow">Open →</span></a>
+            <a class="dashboard-card" href="{{ url_for('inspections') }}"><b>Inspections</b><span>Open assigned PPA inspections and submit reports.</span><span class="arrow">Open →</span></a>
+        </div>
+    </div>
+
+    <div class="dashboard-section" style="border-color:rgba(50,179,125,.45);">
+        <h2>Restricted File Access</h2>
+        <p class="section-description">Supporting Staff can search for a specific file without accessing movement history, forwarding details or audit records.</p>
+        <a class="cta dashboard-cta" href="{{ url_for('supporting_file_search') }}">Search Files →</a>
+    </div>
 
 {% else %}
 
-    <header class="dash-head">
+    <div class="dashboard-head">
         <div>
-            <div class="eyebrow">OPERATIONS CONTROL</div>
-            <h1>{% if current_user['role'] == 'Zonal Inspector' %}Zonal Inspector Dashboard{% else %}File Movement Dashboard{% endif %}</h1>
-            <p>
-                {% if current_user['role'] == 'Zonal Inspector' %}
-                    Monitor file movement, PPA inspections, Corps Member attendance and reports submitted for review.
-                {% else %}
-                    Monitor documents received from LGIs and their movement to the State Secretariat.
-                {% endif %}
-            </p>
+            <span class="eyebrow">Operations Control</span>
+            <h1>File Movement Dashboard</h1>
+            <p class="intro">Monitor documents received from LGIs and their movement to the State Secretariat.</p>
         </div>
-        <a class="dash-btn" href="{{ url_for('receive') }}">＋ Register New File</a>
-    </header>
+        <a class="cta dashboard-cta" href="{{ url_for('receive') }}">＋ Register New File</a>
+    </div>
 
-    {% if stats is defined %}
-    <section class="stats-grid" aria-label="File movement statistics">
+    <div class="dashboard-stats">
         {% for k in ['Total','Received','Forwarded','Submitted','Returned'] %}
-        <div class="stat-card">
-            <span class="stat-label">
-                {% if k == 'Total' %}Total Files
-                {% elif k == 'Received' %}Received
-                {% elif k == 'Forwarded' %}Forwarded
-                {% elif k == 'Submitted' %}Submitted
-                {% else %}Returned{% endif %}
-            </span>
-            <strong class="stat-value">{{ stats.get(k,0) }}</strong>
-        </div>
+        <div class="dashboard-stat"><small>{{ k }}</small><strong>{{ stats.get(k,0) }}</strong></div>
         {% endfor %}
-    </section>
-    {% endif %}
+    </div>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>Inspection &amp; PPA Monitoring</h2></div>
-        <p class="panel-description">Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.</p>
-        <a class="dash-btn" href="{{ url_for('inspections') }}">Open Inspection →</a>
-    </section>
+    <div class="dashboard-section dashboard-flat-section">
+        <h2>Inspection &amp; PPA Monitoring</h2>
+        <p class="section-description">Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.</p>
+        <a class="cta dashboard-cta" href="{{ url_for('inspections') }}">Open Inspection →</a>
+    </div>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>State Secretariat Branches</h2></div>
-        <p class="panel-description">Select a branch to view files currently assigned to it.</p>
+    <div class="dashboard-section dashboard-flat-section">
+        <h2>State Secretariat Branches</h2>
         <div class="branch-grid">
-            {% for b,n in branches|default([]) %}
-            <a class="branch-card" href="{{ url_for('files_page',branch=b) }}">
-                <span class="tile-icon">▤</span>
-                <span class="tile-copy"><b>{{ b }}</b><span>{{ n }} file{{ '' if n == 1 else 's' }} currently assigned</span></span>
-                <span class="tile-arrow">→</span>
-            </a>
-            {% else %}
-            <div class="empty">No branch records are available yet.</div>
-            {% endfor %}
+            {% for b,n in branches %}
+            <a class="branch-card" href="{{ url_for('files_page',branch=b) }}"><b>{{ b }}</b><span>{{ n }} file{{ '' if n==1 else 's' }} →</span></a>
+            {% else %}<div class="card">No branch records yet.</div>{% endfor %}
         </div>
-    </section>
+    </div>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>Recent Records</h2></div>
-        <p class="panel-description">The latest files recorded in the system.</p>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>File ID</th>
-                        <th>Document</th>
-                        <th>Source</th>
-                        <th>Current Location</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
+    <div class="dashboard-section dashboard-flat-section">
+        <h2>Recent Records</h2>
+        <div class="records-wrap">
+            <table class="records-table">
+                <thead><tr><th>File ID</th><th>Document</th><th>Source</th><th>Location</th><th>Status</th></tr></thead>
                 <tbody>
-                    {% for r in recent|default([]) %}
-                    <tr>
-                        <td><a class="file-link" href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td>
-                        <td>
-                            <span class="doc-title">{{ r['title'] }}</span>
-                            <span class="subtext">{{ r['reference_no'] or 'No reference number' }}</span>
-                        </td>
-                        <td>{{ r['lga'] or '—' }}</td>
-                        <td>{{ r['current_location'] or '—' }}</td>
-                        <td><span class="status {{ r['status']|lower|replace(' ','-') }}">{{ r['status'] }}</span></td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="empty">No records available yet.</td></tr>
-                    {% endfor %}
+                {% for r in recent %}
+                <tr>
+                    <td><a href="{{ url_for('detail',file_id=r['file_id']) }}">{{ r['file_id'] }}</a></td>
+                    <td class="document-cell"><b>{{ r['title'] }}</b><small>{{ r['reference_no'] or 'No reference number' }}</small></td>
+                    <td>{{ r['lga'] }}</td><td>{{ r['current_location'] }}</td>
+                    <td><span class="status-badge">{{ r['status'] }}</span></td>
+                </tr>
+                {% else %}<tr><td colspan="5">No records yet.</td></tr>{% endfor %}
                 </tbody>
             </table>
         </div>
-    </section>
+    </div>
 
 {% endif %}
+
 </div>
+
 {% endblock %}
