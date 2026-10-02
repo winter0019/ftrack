@@ -28,16 +28,36 @@
 }
 .dash .dash-btn:hover { background: #087a51; }
 .dash .stats-grid {
-    display: grid; grid-template-columns: repeat(5,minmax(0,1fr));
-    gap: 16px; margin: 0 0 30px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 22px;
+    align-items: stretch;
 }
 .dash .stat-card {
-    min-width: 0; padding: 19px 20px; background: #fff;
-    border: 1px solid #e0eae5; border-radius: 14px;
-    box-shadow: 0 4px 15px #173d2c08;
+    min-width: 0;
+    min-height: 0;
+    padding: 13px 16px;
+    background: #fff;
+    border: 1px solid #e0eae5;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px #173d2c06;
 }
-.dash .stat-label { color: #71827b; font-size: 12px; font-weight: 700; line-height: 1.5; }
-.dash .stat-value { display: block; margin-top: 8px; font-size: 30px; line-height: 1.1; font-weight: 850; color: #07543f; }
+.dash .stat-label {
+    display: block;
+    color: #71827b;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+.dash .stat-value {
+    display: block;
+    margin-top: 5px;
+    font-size: 27px;
+    line-height: 1.05;
+    font-weight: 850;
+    color: #07543f;
+}
 .dash .panel {
     background: #fff; border: 1px solid #e0eae5; border-radius: 15px;
     padding: 23px; margin-bottom: 25px;
@@ -103,7 +123,7 @@
 .dash .note-label { color: #138258; font-size: 10px; font-weight: 850; letter-spacing: .1em; }
 
 @media (max-width: 1050px) {
-    .dash .stats-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .dash .stats-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
     .dash .branch-grid, .dash .work-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 650px) {
@@ -111,8 +131,9 @@
     .dash .dash-head { align-items: flex-start; gap: 15px; }
     .dash .dash-head .dash-btn { width: 100%; }
     .dash .stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
-    .dash .stat-card { padding: 15px; }
-    .dash .stat-value { font-size: 26px; }
+    .dash .stat-card { padding: 12px 13px; }
+    .dash .stat-label { font-size: 11px; }
+    .dash .stat-value { font-size: 24px; }
     .dash .panel { padding: 16px; margin-bottom: 18px; }
     .dash .branch-grid, .dash .work-grid { grid-template-columns: 1fr; gap: 10px; }
     .dash h2 { font-size: 19px; }
