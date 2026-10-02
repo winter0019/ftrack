@@ -287,7 +287,7 @@ footer {
   .brand small { font-size: 11px; }
   .menu { display: block; }
   .top nav {
-    display: none;
+    display: none !important;
     order: 3;
     width: 100%;
     margin: 0;
@@ -297,7 +297,8 @@ footer {
     gap: 4px;
     border-top: 1px solid #ffffff25;
   }
-  body.open .top nav { display: flex; }
+  .top.menu-open nav,
+  body.open .top nav { display: flex !important; }
   .top nav > a { padding: 10px 8px; white-space: normal; }
   .top nav > a.cta { justify-content: flex-start; }
   .account { display: none; }
@@ -345,7 +346,7 @@ footer {
 </head>
 
 <body>
-<header class="top">
+<header class="top" id="siteHeader">
   <a class="brand" href="{{ url_for('dashboard') }}">
     <img
       src="{{ url_for('static', filename='images/nysc-logo.png') }}"
@@ -360,13 +361,14 @@ footer {
 
   <button
     class="menu"
+    id="menuToggle"
     type="button"
-    aria-label="Toggle navigation"
+    aria-label="Open navigation menu"
+    aria-controls="mainNavigation"
     aria-expanded="false"
-    onclick="document.body.classList.toggle('open'); this.setAttribute('aria-expanded', document.body.classList.contains('open'))"
-  >☰</button>
+  ><span aria-hidden="true">☰</span></button>
 
-  <nav aria-label="Main navigation">
+  <nav id="mainNavigation" aria-label="Main navigation">
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
@@ -415,5 +417,37 @@ footer {
 </main>
 
 <footer>NYSC Katsina Zonal Office · File Movement Register · Phase 2</footer>
+
+<script>
+(function () {
+  const header = document.getElementById("siteHeader");
+  const toggle = document.getElementById("menuToggle");
+  const nav = document.getElementById("mainNavigation");
+
+  if (!header || !toggle || !nav) return;
+
+  function closeMenu() {
+    header.classList.remove("menu-open");
+    document.body.classList.remove("open");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation menu");
+  }
+
+  toggle.addEventListener("click", function () {
+    const isOpen = header.classList.toggle("menu-open");
+    document.body.classList.toggle("open", isOpen);
+    toggle.setAttribute("aria-expanded", String(isOpen));
+    toggle.setAttribute("aria-label", isOpen ? "Close navigation menu" : "Open navigation menu");
+  });
+
+  nav.querySelectorAll("a").forEach(function (link) {
+    link.addEventListener("click", closeMenu);
+  });
+
+  window.addEventListener("resize", function () {
+    if (window.innerWidth > 760) closeMenu();
+  });
+})();
+</script>
 </body>
 </html>
