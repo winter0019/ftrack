@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}{{ r.full_name }} | Corps Member Details{% endblock %}
+{% block content %}
+<div class="card" style="max-width:900px;margin:24px auto;padding:24px"><a href="{{ url_for('lgi_corps_search') }}">← Back to search</a><h1>{{ r.full_name }}</h1><p><b>State Code:</b> {{ r.state_code }}</p><p><b>LGA:</b> {{ r.lga }}</p><p><b>Gender:</b> {{ r.gender or '—' }}</p><p><b>Course / Discipline:</b> {{ r.discipline or '—' }}</p><p><b>PPA / Establishment:</b> {{ r.ppa_name or '—' }}</p><p><b>Phone:</b> {{ r.phone or '—' }}</p><p><b>Batch:</b> {{ r.batch or '—' }}</p><p><b>Stream:</b> {{ r.stream or '—' }}</p><p><b>Status:</b> {{ r.status or 'Active' }}</p></div>
+{% endblock %}

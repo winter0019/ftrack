@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}My File Submission Status | KATZIMS{% endblock %}
+{% block content %}
+<div style="max-width:1450px;margin:auto;padding:24px 18px 48px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px;">
+    <div><span style="color:#15945e;font-weight:800;font-size:12px;text-transform:uppercase">Local Government Inspectorate</span><h1 style="margin:5px 0">File Submission Status</h1><p style="margin:0;color:#6b7c84">Track files you submitted from {{ assigned_lga }} to the Zonal Office.</p></div>
+    <a class="cta" href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px"><input name="q" value="{{ q }}" placeholder="Search File ID, title, reference or status" style="flex:1;min-width:230px;padding:12px;border:1px solid #d4dfdb;border-radius:10px"><button class="cta" type="submit" style="border:0;cursor:pointer">Search Files</button></form>
+  <div style="overflow-x:auto;background:#fff;border:1px solid #e2eae6;border-radius:12px"><table style="width:100%;min-width:1000px;border-collapse:collapse;text-align:left"><thead><tr style="background:#f4f8f6"><th style="padding:12px">File ID / Title</th><th>Reference</th><th>Status</th><th>Current Location</th><th>Submitted</th><th>Latest Movement</th><th>Latest Update</th><th>Remarks</th></tr></thead><tbody>
+  {% for r in rows %}<tr style="border-top:1px solid #edf2f0"><td style="padding:12px"><strong>{{ r.file_id }}</strong><br>{{ r.title }}</td><td>{{ r.reference_no or '—' }}</td><td><span style="font-weight:700">{{ r.status or 'Submitted' }}</span></td><td>{{ r.current_location or '—' }}</td><td>{{ r.created_at or r.received_at or '—' }}</td><td>{{ r.latest_action or r.latest_movement_status or 'Submission recorded' }}{% if r.latest_to_location %}<br>To: {{ r.latest_to_location }}{% endif %}</td><td>{{ r.latest_movement_at or r.received_at or '—' }}</td><td>{{ r.latest_remarks or '—' }}</td></tr>
+  {% else %}<tr><td colspan="8" style="padding:28px;text-align:center;color:#6b7c84">No submitted files found{% if q %} matching “{{ q }}”{% endif %}.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

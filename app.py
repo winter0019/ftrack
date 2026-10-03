@@ -500,6 +500,158 @@ def files_page():
     return render_template("files.html",rows=rows,q=q,status=status,
                            branch=branch,branches=BRANCHES)
 
+@app.route("/lgi-send-file",methods=["GET","POST"])
+@login_required
+def lgi_send_file():
+    """Allow an LGI to submit a file to the Zonal Office for their assigned LGA only."""
+    u=current_user()
+    if not u or u["role"] != "LGI Officer":
+        flash("This submission page is reserved for LGI Officers.","error")
+        return redirect(url_for("dashboard"))
+    assigned_lga=(u.get("lga") or "").strip()
+    if assigned_lga not in LGAS:
+        flash("Your account does not have a valid assigned LGA. Contact the Administrator.","error")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        title=request.form.get("title","").strip()
+        if not title:
+            flash("File/document title is required.","error")
+            return redirect(url_for("lgi_send_file"))
+        t=now(); fid=next_file_id(); attachment=None
+        uploaded=request.files.get("attachment")
+        if uploaded and uploaded.filename:
+            attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
+            uploaded.save(os.path.join(UPLOADS,attachment))
+        c=db()
+        try:
+            c.execute("""INSERT INTO files
+                (file_id,title,reference_no,lga,lgi_name,received_by,received_at,priority,
+                 description,attachment,status,current_location,created_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (fid,title,request.form.get("reference_no"),assigned_lga,
+                 u["full_name"],u["full_name"],t,request.form.get("priority","Normal"),
+                 request.form.get("remarks") or request.form.get("description"),attachment,
+                 "Submitted","Katsina Zonal Office",t))
+            c.execute("""INSERT INTO movements
+                (file_id,from_location,to_location,forwarded_by,receiving_officer,action,
+                 forwarded_at,status,remarks,submitted_by,submitted_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (fid,assigned_lga,"Katsina Zonal Office",u["full_name"],"Zonal Inspector",
+                 "LGI FILE SUBMISSION",t,"Submitted",request.form.get("remarks"),u["full_name"],t))
+            c.execute("""INSERT INTO audit_logs
+                (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+                (fid,"FILE SUBMITTED BY LGI",u["full_name"],
+                 f"Submitted from assigned LGA: {assigned_lga} to Katsina Zonal Office",t))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
+        flash(f"{fid} submitted to the Zonal Office successfully.","success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("receive.html",lgas=[assigned_lga],priorities=PRIORITIES,
+                           lgi_scope=True,assigned_lga=assigned_lga)
+
+
+
+@app.route("/lgi-corps-search")
+@login_required
+def lgi_corps_search():
+    """LGI directory restricted server-side to the officer's assigned LGA."""
+    u=current_user()
+    if u["role"] != "LGI Officer":
+        flash("The corps member directory is available to LGI Officers only.","error")
+        return redirect(url_for("dashboard"))
+    assigned_lga=(u.get("lga") or "").strip()
+    if assigned_lga not in LGAS:
+        flash("Your account has no valid assigned LGA. Contact the Administrator.","error")
+        return redirect(url_for("dashboard"))
+    q=request.args.get("q","").strip()
+    rows=[]
+    if q:
+        c=db()
+        like=f"%{q}%"
+        rows=c.execute("""
+            SELECT cm.state_code,cm.full_name,cm.gender,cm.discipline,cm.batch,cm.stream,
+                   cm.phone,cm.status,p.name AS ppa_name,p.lga
+            FROM corps_members cm
+            JOIN ppa_establishments p ON p.id=cm.ppa_id
+            WHERE p.lga=%s AND COALESCE(cm.status,'Active') ILIKE 'Active'
+              AND (cm.state_code ILIKE %s OR cm.full_name ILIKE %s OR COALESCE(cm.phone,'') ILIKE %s
+                   OR p.name ILIKE %s OR COALESCE(cm.discipline,'') ILIKE %s)
+            ORDER BY cm.full_name LIMIT 250
+        """,(assigned_lga,like,like,like,like,like)).fetchall()
+        c.close()
+    return render_template("lgi_corps_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
+
+
+@app.route("/lgi-corps/<path:state_code>")
+@login_required
+def lgi_corps_detail(state_code):
+    """Show an individual corps record only when it belongs to the LGI's LGA."""
+    u=current_user()
+    if u["role"] != "LGI Officer":
+        flash("The corps member directory is available to LGI Officers only.","error")
+        return redirect(url_for("dashboard"))
+    assigned_lga=(u.get("lga") or "").strip()
+    if assigned_lga not in LGAS:
+        flash("Your account has no valid assigned LGA. Contact the Administrator.","error")
+        return redirect(url_for("dashboard"))
+    c=db()
+    row=c.execute("""
+        SELECT cm.state_code,cm.full_name,cm.gender,cm.discipline,cm.batch,cm.stream,
+               cm.phone,cm.status,cm.created_at,cm.updated_at,p.name AS ppa_name,p.lga
+        FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
+        WHERE cm.state_code=%s AND p.lga=%s
+    """,(state_code,assigned_lga)).fetchone()
+    c.close()
+    if not row:
+        return "Corps member not found in your assigned LGA.",404
+    return render_template("lgi_corps_detail.html",r=row,assigned_lga=assigned_lga)
+
+
+@app.route("/lgi-file-status")
+@login_required
+def lgi_file_status():
+    """Track only files submitted by the logged-in LGI to the Zonal Office."""
+    u=current_user()
+    if u["role"] != "LGI Officer":
+        flash("File submission tracking is available to LGI Officers only.","error")
+        return redirect(url_for("dashboard"))
+    assigned_lga=(u.get("lga") or "").strip()
+    if assigned_lga not in LGAS:
+        flash("Your account has no valid assigned LGA. Contact the Administrator.","error")
+        return redirect(url_for("dashboard"))
+    q=request.args.get("q","").strip()
+    c=db()
+    params=[assigned_lga,u["full_name"]]
+    sql="""
+        SELECT f.file_id,f.title,f.reference_no,f.lga,f.status,f.current_location,
+               f.received_at,f.created_at,f.priority,f.description,
+               m.action AS latest_action,m.status AS latest_movement_status,
+               m.to_location AS latest_to_location,m.forwarded_at AS latest_movement_at,
+               m.remarks AS latest_remarks
+        FROM files f
+        LEFT JOIN LATERAL (
+            SELECT action,status,to_location,forwarded_at,remarks
+            FROM movements WHERE movements.file_id=f.file_id ORDER BY id DESC LIMIT 1
+        ) m ON TRUE
+        WHERE f.lga=%s AND f.lgi_name=%s
+    """
+    # Bind scope parameters in SQL order; the first two are used in the scope clause below.
+    params=[]
+    if q:
+        like=f"%{q}%"
+        sql += " AND (f.file_id ILIKE %s OR f.title ILIKE %s OR COALESCE(f.reference_no,'') ILIKE %s OR f.status ILIKE %s)"
+        params.extend([like,like,like,like])
+    sql += " ORDER BY f.id DESC LIMIT 500"
+    rows=c.execute(sql,(assigned_lga,u["full_name"],*params)).fetchall()
+    c.close()
+    return render_template("lgi_file_status.html",rows=rows,q=q,assigned_lga=assigned_lga)
+
 @app.route("/receive",methods=["GET","POST"])
 @registry_required
 def receive():
@@ -855,18 +1007,29 @@ def inspections():
     return redirect(url_for("dashboard"))
 
 
+@app.route("/corps-members/import", methods=["GET", "POST"])
+@inspection_management_required
+def corps_members_import():
+    """Dedicated general corps-member directory import, separate from inspection navigation."""
+    return _corps_import_handler(directory_mode=True)
+
+
 @app.route("/inspection/import",methods=["GET","POST"])
 @inspection_management_required
 def inspection_import():
+    return _corps_import_handler(directory_mode=False)
+
+
+def _corps_import_handler(directory_mode=False):
     if request.method == "POST":
         uploads=[u for u in request.files.getlist("corps_file") if u and u.filename]
         selected_lga=(request.form.get("lga") or "").strip()
         if not uploads:
             flash("Please select at least one CSV or XLSX file.","error")
-            return redirect(url_for("inspection_import"))
+            return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
         if selected_lga and selected_lga not in LGAS:
             flash("Please select a valid LGA.","error")
-            return redirect(url_for("inspection_import"))
+            return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
 
         try:
             valid=[]
@@ -906,7 +1069,7 @@ def inspection_import():
                 flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.","error")
                 if error_rows:
                     flash(" | ".join(error_rows[:8]),"error")
-                return redirect(url_for("inspection_import"))
+                return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
 
             deduped={}
             for f in valid:
@@ -1008,8 +1171,8 @@ def inspection_import():
             except Exception:
                 pass
             flash(f"Import failed: {exc}","error")
-        return redirect(url_for("inspection_import"))
-    return render_template("inspection_import.html", lgas=LGAS)
+        return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
+    return render_template("corps_members_import.html" if directory_mode else "inspection_import.html", lgas=LGAS)
 
 
 @app.route("/inspection/assign",methods=["POST"])

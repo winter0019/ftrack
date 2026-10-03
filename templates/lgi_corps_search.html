@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Corps Members Directory | KATZIMS{% endblock %}
+{% block content %}
+<div class="card" style="max-width:1200px;margin:24px auto;padding:24px">
+  <h1>Corps Members Directory</h1><p>Search active corps members in <b>{{ assigned_lga }}</b> only.</p>
+  <form method="get" action="{{ url_for('lgi_corps_search') }}" style="display:flex;gap:10px;flex-wrap:wrap;margin:18px 0">
+    <input name="q" value="{{ q }}" placeholder="State Code, name, phone, PPA or course" style="flex:1;min-width:240px;padding:12px;border:1px solid #ccd8d2;border-radius:8px">
+    <button class="cta" type="submit">Search</button>
+  </form>
+  {% if q %}<p>{{ rows|length }} result(s)</p>{% endif %}
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>State Code</th><th>Name</th><th>Gender</th><th>PPA / Establishment</th><th>Phone</th><th>Details</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td>{{ r.state_code }}</td><td>{{ r.full_name }}</td><td>{{ r.gender or '—' }}</td><td>{{ r.ppa_name or '—' }}</td><td>{{ r.phone or '—' }}</td><td><a href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View</a></td></tr>
+  {% else %}<tr><td colspan="6">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

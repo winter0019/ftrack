@@ -26,20 +26,23 @@ body {
   position: relative;
   z-index: 100;
   width: 100%;
-  min-height: 78px;
-  padding: 12px clamp(16px, 3vw, 38px);
+  min-height: 130px;
+  padding: 18px clamp(22px, 2.7vw, 56px);
   display: flex;
   align-items: center;
-  gap: 26px;
-  background: var(--nav-green);
+  gap: clamp(18px, 2vw, 42px);
+  background: linear-gradient(105deg, #003d2f 0%, #064333 52%, #003c2f 100%);
   color: white;
-  box-shadow: 0 5px 18px #092f2418;
+  box-shadow: 0 8px 22px rgba(0, 43, 32, .22);
+  border-bottom: 1px solid rgba(224, 184, 54, .18);
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 215px;
+  gap: 18px;
+  min-width: 340px;
+  padding-right: 26px;
+  border-right: 3px solid #d7b333;
   color: inherit;
   text-decoration: none;
   flex-shrink: 0;
@@ -49,8 +52,8 @@ body {
   display: block;
 }
 .nav-logo {
-  width: 42px;
-  height: 42px;
+  width: 76px;
+  height: 76px;
   flex-shrink: 0;
 }
 .brand span {
@@ -60,29 +63,30 @@ body {
   min-width: 0;
 }
 .brand strong {
-  font-size: 15px;
+  font-size: clamp(19px, 1.35vw, 28px);
   line-height: 1.2;
-  font-weight: 800;
+  font-weight: 850;
+  letter-spacing: -.025em;
 }
 .brand small {
   color: #c3d7cf;
-  font-size: 12px;
+  font-size: clamp(14px, .95vw, 21px);
   line-height: 1.3;
 }
 .top nav {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: clamp(12px, 1.8vw, 26px);
+  gap: clamp(14px, 1.65vw, 34px);
   margin-left: auto;
   min-width: 0;
 }
 .top nav > a {
   color: #fff;
   text-decoration: none;
-  font-size: 14px;
-  font-weight: 650;
-  padding: 10px 0;
+  font-size: clamp(14px, 1.05vw, 21px);
+  font-weight: 750;
+  padding: 13px 0;
   white-space: nowrap;
 }
 .top nav > a:hover { color: #c9eadb; }
@@ -92,13 +96,13 @@ body {
   justify-content: center;
   align-items: center;
   gap: 6px;
-  padding: 10px 15px;
+  padding: 19px 26px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 17px;
   background: var(--nav-green-light);
   color: #fff;
-  font-size: 14px;
-  font-weight: 750;
+  font-size: clamp(15px, 1.05vw, 21px);
+  font-weight: 800;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -106,26 +110,40 @@ body {
 .account {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   margin-left: 2px;
-  padding-left: 18px;
+  padding-left: 26px;
   border-left: 1px solid #ffffff30;
   min-width: 0;
+}
+.account::before {
+  content: "ID";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border: 2px solid #d8b63b;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 800;
 }
 .account-text {
   display: flex;
   flex-direction: column;
   gap: 4px;
   line-height: 1.2;
-  text-align: right;
-  max-width: 190px;
+  text-align: left;
+  max-width: 205px;
 }
 .account-text strong {
-  font-size: 13px;
+  font-size: 15px;
   overflow-wrap: anywhere;
 }
 .account-text small {
-  font-size: 11px;
+  font-size: 12px;
   color: #c5d8d0;
   line-height: 1.35;
 }
@@ -135,9 +153,9 @@ body {
   font-size: 12px;
 }
 .logout {
-  padding: 8px 11px;
-  border: 1px solid #ffffff45;
-  border-radius: 8px;
+  padding: 17px 20px;
+  border: 1px solid #ffffff55;
+  border-radius: 14px;
   white-space: nowrap;
 }
 .admin-link { font-weight: 750 !important; }
@@ -266,9 +284,10 @@ footer {
 }
 
 @media (max-width: 1100px) {
-  .top { gap: 16px; }
-  .brand { min-width: 185px; }
-  .top nav { gap: 14px; }
+  .top { gap: 14px; min-height: 104px; }
+  .brand { min-width: 255px; padding-right: 16px; }
+  .nav-logo { width: 58px; height: 58px; }
+  .top nav { gap: 12px; }
   .account-text { max-width: 145px; }
   .account-text strong { font-size: 12px; }
   .wrap .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -280,9 +299,9 @@ footer {
     flex-wrap: wrap;
     gap: 10px;
   }
-  .brand { min-width: 0; margin-right: auto; }
-  .nav-logo { width: 38px; height: 38px; }
-  .brand strong { font-size: 14px; }
+  .brand { min-width: 0; margin-right: auto; padding-right: 0; border-right: 0; }
+  .nav-logo { width: 42px; height: 42px; }
+  .brand strong { font-size: 15px; }
   .brand small { font-size: 11px; }
   .menu { display: block; }
   .top nav {
@@ -308,6 +327,7 @@ footer {
   .top nav > a:hover { background: rgba(255,255,255,0.08); }
   .top nav > a.cta { justify-content: flex-start; }
   .account { display: none; }
+  .account::before { display: none; }
   .mobile-account {
     display: block;
     padding: 12px 14px;
@@ -405,6 +425,45 @@ img, video, iframe, canvas, svg { max-width: 100%; }
   .wrap .section { padding: 13px !important; }
   .mobile-account { overflow-wrap: anywhere; }
 }
+
+/* Navigation visibility fix: switch to a menu before the full header gets crowded */
+@media (min-width: 761px) and (max-width: 1250px) {
+  .top {
+    min-height: 76px;
+    padding: 10px 22px;
+    gap: 14px;
+    flex-wrap: nowrap;
+  }
+  .brand { min-width: 0; gap: 10px; }
+  .brand strong { font-size: 15px; }
+  .brand small { font-size: 11px; }
+  .nav-logo { width: 40px; height: 40px; }
+  .menu { display: block; flex-shrink: 0; margin-left: auto; }
+  .top nav {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 200;
+    width: 100%;
+    margin: 0;
+    padding: 14px 22px 20px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    background: #064a38;
+    border-top: 1px solid rgba(255,255,255,.15);
+    box-shadow: 0 12px 30px rgba(0,0,0,.25);
+  }
+  .top nav.is-open,
+  .top.menu-open nav,
+  body.open .top nav { display: flex !important; }
+  .top nav > a { display: flex; width: 100%; padding: 10px 12px; white-space: normal; border-radius: 7px; }
+  .top nav > a.cta { width: 100%; justify-content: flex-start; }
+  .account { display: none !important; }
+  .mobile-account { display: block; }
+}
+
 </style>
 </head>
 
@@ -436,6 +495,10 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
     <a href="{{ url_for('inspections') }}">Inspection</a>
+
+    {% if current_user and current_user['role']=='LGI Officer' %}
+      <a href="{{ url_for('lgi_corps_search') }}">Directory</a>
+    {% endif %}
 
     {% if current_user and current_user['role']=='Administrator' %}
       <a class="admin-link" href="{{ url_for('users') }}">Officials</a>

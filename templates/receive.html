@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Receive File | NYSC Katsina Zonal Office{% endblock %}
+{% block title %}{{ "Submit File to ZI" if lgi_scope|default(false) else "Receive File" }} | NYSC Katsina Zonal Office{% endblock %}
 
 {% block content %}
 <style>
@@ -45,8 +45,8 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
 <div class="form-wrap">
     <div class="form-head">
         <div class="eyebrow">Inward Register</div>
-        <h1>Receive File</h1>
-        <p>Register every physical document received from an LGI. The Zonal Inspector reviews and forwards it to the appropriate Secretariat branch.</p>
+        <h1>{{ "Submit File to Zonal Inspector" if lgi_scope|default(false) else "Receive File" }}</h1>
+        <p>{% if lgi_scope|default(false) %}Submit a file from your assigned LGA to the Zonal Inspector. Your LGA is fixed by your account.{% else %}Register every physical document received from an LGI. The Zonal Inspector reviews and forwards it to the appropriate Secretariat branch.{% endif %}</p>
     </div>
 
     <div class="info-banner">
@@ -70,12 +70,17 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
 
             <div class="form-group">
                 <label>From LGA *</label>
+                {% if lgi_scope|default(false) %}
+                <input type="text" value="{{ assigned_lga }}" readonly>
+                <input type="hidden" name="lga" value="{{ assigned_lga }}">
+                {% else %}
                 <select name="lga" required>
                     <option value="">Select LGA...</option>
                     {% for lga in lgas|default(['Katsina A', 'Katsina B', 'Daura', 'Zango', 'Sandamu']) %}
                     <option value="{{ lga }}">{{ lga }}</option>
                     {% endfor %}
                 </select>
+                {% endif %}
             </div>
 
             <div class="form-group">
@@ -106,8 +111,8 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="submit-btn">Save & Create File ID</button>
-            <a class="cancel-link" href="{{ url_for('files_page') }}">Cancel</a>
+            <button type="submit" class="submit-btn">{{ "Submit File to ZI" if lgi_scope|default(false) else "Save & Create File ID" }}</button>
+            <a class="cancel-link" href="{{ url_for('dashboard') if lgi_scope|default(false) else url_for('files_page') }}">Cancel</a>
         </div>
     </form>
 </div>
