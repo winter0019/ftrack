@@ -861,11 +861,6 @@
                 <span>Submit an official file or document to the Zonal Inspector.</span>
                 <span class="arrow">Open →</span>
             </a>
-            <a class="dashboard-card" href="{{ url_for('lgi_corps_search') }}">
-                <b>Corps Members Directory</b>
-                <span>Search corps members within your assigned LGA by State Code, name or phone.</span>
-                <span class="arrow">Search →</span>
-            </a>
             <a class="dashboard-card" href="{{ url_for('reports') }}">
                 <b>Inspection Reports</b>
                 <span>Receive reports issued by the Zonal Inspector for your LGA.</span>
@@ -916,7 +911,7 @@
         <h2>Supporting Staff Work Areas</h2>
         <p class="section-description">Access only the functions assigned to Supporting Staff.</p>
         <div class="dashboard-grid">
-            <a class="dashboard-card" href="{{ url_for('supporting_file_search') }}"><b>File Search</b><span>Search by State Code, Reference No. or File ID.</span><span class="arrow">Open →</span></a>
+            <a class="dashboard-card" href="{{ url_for('supporting_file_search') }}"><b>File Search</b><span>Search files by Reference No. or File ID only. Corps Member searches are available only within assigned PPA inspections.</span><span class="arrow">Open →</span></a>
             <a class="dashboard-card" href="{{ url_for('receive') }}"><b>Register New File</b><span>Receive and register a file submitted by an LGI.</span><span class="arrow">Open →</span></a>
             <a class="dashboard-card" href="{{ url_for('inspections') }}"><b>Inspections</b><span>Open assigned PPA inspections and submit reports.</span><span class="arrow">Open →</span></a>
         </div>
@@ -944,14 +939,6 @@
         <div class="dashboard-stat"><small>{{ k }}</small><strong>{{ stats.get(k,0) }}</strong></div>
         {% endfor %}
     </div>
-
-    {% if current_user['role'] in ('Administrator', 'Zonal Inspector') %}
-    <div class="dashboard-section dashboard-flat-section">
-        <h2>Corps Members Directory</h2>
-        <p class="section-description">Import or update the zonal corps members master list for LGI searches. This is separate from inspection assignments.</p>
-        <a class="cta dashboard-cta" href="{{ url_for('corps_members_import') }}">Import / Update Corps Members →</a>
-    </div>
-    {% endif %}
 
     <div class="dashboard-section dashboard-flat-section">
         <h2>Inspection &amp; PPA Monitoring</h2>

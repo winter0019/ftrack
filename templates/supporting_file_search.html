@@ -2,19 +2,19 @@
 {% block title %}File Search | Supporting Staff{% endblock %}
 {% block content %}
 <div class="head">
-  <div><small>RESTRICTED FILE ACCESS</small><h1>File Search</h1><p>Search by State Code / Reference No. or File ID.</p></div>
+  <div><small>RESTRICTED FILE ACCESS</small><h1>File Search</h1><p>Search by Reference No. or File ID only. Corps Member Directory access is not available to Supporting Staff.</p></div>
   <a class="cta" href="{{ url_for('receive') }}">＋ Register New File</a>
 </div>
 <div class="section">
   <form method="get" action="{{ url_for('supporting_file_search') }}" style="display:flex;gap:10px;flex-wrap:wrap;">
-    <input name="q" value="{{ q }}" placeholder="State Code / Reference No. or File ID" autocomplete="off" style="flex:1;min-width:280px;">
+    <input name="q" value="{{ q }}" placeholder="Reference No. or File ID" autocomplete="off" style="flex:1;min-width:280px;">
     <button class="cta" type="submit">Search</button>
   </form>
 </div>
 {% if q %}
 <div class="section">
   <h2>Search Results</h2>
-  {% if rows %}<div class="table"><table><tr><th>File ID</th><th>State Code / Reference No.</th><th>Document</th><th>LGA</th><th>Status</th><th></th></tr>
+  {% if rows %}<div class="table"><table><tr><th>File ID</th><th>Reference No.</th><th>Document</th><th>LGA</th><th>Status</th><th></th></tr>
   {% for r in rows %}<tr><td>{{ r['file_id'] }}</td><td>{{ r['reference_no'] or '—' }}</td><td>{{ r['title'] }}</td><td>{{ r['lga'] or '—' }}</td><td>{{ r['status'] }}</td><td><a class="cta" href="{{ url_for('supporting_file_view',file_id=r['file_id']) }}">View</a></td></tr>{% endfor %}
   </table></div>{% else %}<p>No file was found for <strong>{{ q }}</strong>.</p>{% endif %}
 </div>{% endif %}
