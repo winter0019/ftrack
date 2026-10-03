@@ -1,16 +1,78 @@
 {% extends "base.html" %}
-{% block title %}Corps Members Directory | KATZIMS{% endblock %}
+{% block title %}Directory | KATZIMS{% endblock %}
 {% block content %}
-<div class="card" style="max-width:1200px;margin:24px auto;padding:24px">
-  <h1>Corps Members Directory</h1><p>Search active corps members in <b>{{ assigned_lga }}</b> only.</p>
-  <form method="get" action="{{ url_for('lgi_corps_search') }}" style="display:flex;gap:10px;flex-wrap:wrap;margin:18px 0">
-    <input name="q" value="{{ q }}" placeholder="State Code, name, phone, PPA or course" style="flex:1;min-width:240px;padding:12px;border:1px solid #ccd8d2;border-radius:8px">
+<style>
+/* Directory page responsive layout */
+.directory-page{max-width:1200px;margin:24px auto;padding:clamp(16px,3vw,28px);}
+.directory-page h1{font-size:clamp(25px,3vw,36px);line-height:1.2;margin:0 0 10px;overflow-wrap:normal;word-break:normal;}
+.directory-page .directory-intro{margin:0;color:#52645d;line-height:1.55;font-size:clamp(14px,1.5vw,17px);}
+.directory-search{display:flex;gap:10px;margin:20px 0;align-items:stretch;}
+.directory-search input{flex:1;min-width:0;width:100%;padding:14px 15px;border:1px solid #ccd8d2;border-radius:11px;font-size:16px;}
+.directory-search .cta{flex:0 0 auto;min-height:48px;padding:13px 24px;cursor:pointer;}
+.directory-count{margin:16px 0;color:#52645d;}
+.directory-table-wrap{width:100%;overflow-x:auto;border:1px solid #e1eae5;border-radius:12px;background:#fff;-webkit-overflow-scrolling:touch;}
+.directory-table{width:100%;border-collapse:collapse;min-width:720px;}
+.directory-table th,.directory-table td{padding:14px 15px;border-bottom:1px solid #edf2ef;text-align:left;vertical-align:top;overflow-wrap:anywhere;}
+.directory-table th{background:#f3f7f5;color:#5b6a65;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+.directory-table tr:last-child td{border-bottom:0;}
+.directory-table a,.directory-card a{color:#075fca;font-weight:700;}
+.directory-cards{display:none;}
+.directory-card{background:#fff;border:1px solid #dce7e1;border-radius:13px;padding:16px;margin:0 0 12px;box-shadow:0 4px 14px rgba(18,59,43,.04);}
+.directory-card h2{font-size:17px;line-height:1.35;margin:0 0 5px;overflow-wrap:anywhere;}
+.directory-card .state-code{font-size:13px;color:#62736b;margin-bottom:14px;overflow-wrap:anywhere;}
+.directory-card dl{display:grid;grid-template-columns:minmax(82px,.65fr) minmax(0,1.35fr);gap:9px 12px;margin:0;}
+.directory-card dt{color:#6b7b74;font-size:13px;}
+.directory-card dd{margin:0;font-weight:600;overflow-wrap:anywhere;word-break:normal;}
+.directory-card .view-link{display:inline-flex;align-items:center;justify-content:center;min-height:42px;margin-top:15px;padding:9px 15px;border-radius:9px;background:#eaf6ef;color:#086544;text-decoration:none;}
+.directory-empty{padding:18px;color:#52645d;}
+@media(max-width:640px){
+ .directory-page{width:100%;margin:10px auto;padding:16px 14px 24px;}
+ .directory-page h1{font-size:clamp(25px,7vw,32px);max-width:100%;}
+ .directory-search{flex-direction:column;gap:10px;margin:17px 0;}
+ .directory-search input{min-height:50px;font-size:16px;}
+ .directory-search .cta{width:100%;min-height:48px;}
+ .directory-table-wrap{display:none;}
+ .directory-cards{display:block;}
+ .directory-count{margin:14px 0;font-size:14px;}
+}
+</style>
+<section class="card directory-page">
+  <h1>Directory</h1>
+  <p class="directory-intro">Search active corps members in <strong>{{ assigned_lga }}</strong> only.</p>
+  <form method="get" action="{{ url_for('lgi_corps_search') }}" class="directory-search">
+    <input name="q" value="{{ q }}" placeholder="State Code, name, phone, PPA or course" aria-label="Search corps members">
     <button class="cta" type="submit">Search</button>
   </form>
-  {% if q %}<p>{{ rows|length }} result(s)</p>{% endif %}
-  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>State Code</th><th>Name</th><th>Gender</th><th>PPA / Establishment</th><th>Phone</th><th>Details</th></tr></thead><tbody>
-  {% for r in rows %}<tr><td>{{ r.state_code }}</td><td>{{ r.full_name }}</td><td>{{ r.gender or '—' }}</td><td>{{ r.ppa_name or '—' }}</td><td>{{ r.phone or '—' }}</td><td><a href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View</a></td></tr>
-  {% else %}<tr><td colspan="6">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</td></tr>{% endfor %}
-  </tbody></table></div>
-</div>
+  {% if q %}<p class="directory-count">{{ rows|length }} result(s)</p>{% endif %}
+
+  <div class="directory-table-wrap">
+    <table class="directory-table">
+      <thead><tr><th>State Code</th><th>Name</th><th>Gender</th><th>PPA / Establishment</th><th>Phone</th><th>Details</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr><td>{{ r.state_code }}</td><td>{{ r.full_name }}</td><td>{{ r.gender or '—' }}</td><td>{{ r.ppa_name or '—' }}</td><td>{{ r.phone or '—' }}</td><td><a href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View details</a></td></tr>
+      {% else %}
+        <tr><td colspan="6" class="directory-empty">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="directory-cards">
+    {% for r in rows %}
+      <article class="directory-card">
+        <h2>{{ r.full_name }}</h2>
+        <div class="state-code">{{ r.state_code }}</div>
+        <dl>
+          <dt>Gender</dt><dd>{{ r.gender or '—' }}</dd>
+          <dt>PPA / Establishment</dt><dd>{{ r.ppa_name or '—' }}</dd>
+          <dt>Phone</dt><dd>{% if r.phone %}<a href="tel:{{ r.phone }}">{{ r.phone }}</a>{% else %}—{% endif %}</dd>
+        </dl>
+        <a class="view-link" href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View details →</a>
+      </article>
+    {% else %}
+      <div class="directory-card directory-empty">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</div>
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}
