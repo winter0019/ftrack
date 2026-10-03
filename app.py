@@ -57,30 +57,10 @@ def db():
 
 @app.after_request
 def integrate_inspection_ui(response):
-    """Add the dashboard inspection card without modifying the shared navigation."""
+    """Ensure clean response headers without injecting UI cards."""
     try:
         if not session.get("user_id") or "text/html" not in (response.content_type or ""):
             return response
-        if request.path in ("/login", "/setup") or request.path.startswith("/admin/db-inspection"):
-            return response
-
-        html = response.get_data(as_text=True)
-        inspection_card = """
-<section data-filetrack-inspection-card="1" style="margin:24px 0;padding:22px 24px;border:1px solid #dfe8e4;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,81,61,.07);">
-  <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#12865f;text-transform:uppercase;margin-bottom:6px;">FIELD MONITORING</div>
-  <h2 style="margin:0 0 7px;color:#17262f;font-size:24px;">Inspection &amp; PPA Monitoring</h2>
-  <p style="margin:0 0 15px;color:#6b7c84;">Manage PPA assignments, Corps Member records and attendance inspections.</p>
-  <a href="/inspections" style="display:inline-block;background:#129b68;color:#fff;padding:11px 17px;border-radius:10px;text-decoration:none;font-weight:700;">Open Inspection Module -&gt;</a>
-</section>"""
-        if request.path == "/" and 'data-filetrack-inspection-card="1"' not in html:
-            match = re.search(r'(<h1[^>]*>\s*File Movement Dashboard\s*</h1>)', html, flags=re.I)
-            if match:
-                position = match.end()
-                html = html[:position] + inspection_card + html[position:]
-            elif "</main>" in html:
-                html = html.replace("</main>", inspection_card + "</main>", 1)
-
-        response.set_data(html)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
     except Exception:
@@ -278,14 +258,10 @@ def role_is(role):
     return bool(u and u["role"] == role)
 
 def can_receive_register():
-    # Supporting Staff are the primary registry assistants for incoming LGI files.
-    # Administrator and Zonal Inspector may also register a file when necessary.
     u=current_user()
     return bool(u and u["role"] in ("Administrator", "Zonal Inspector", "Supporting Staff"))
 
 def can_operate_file_movement():
-    # Only the Administrator or Zonal Inspector controls forwarding/returning.
-    # Supporting Staff register incoming files and later confirm physical delivery.
     u=current_user()
     return bool(u and u["role"] in ("Administrator", "Zonal Inspector"))
 
@@ -502,7 +478,6 @@ def dashboard():
 @login_required
 @lgi_report_only
 def files_page():
-    # Supporting Staff must use the restricted file search.
     if current_user()["role"] == "Supporting Staff":
         return redirect(url_for("supporting_file_search"))
 
@@ -625,7 +600,6 @@ def supporting_file_view(file_id):
 @login_required
 @lgi_report_only
 def detail(file_id):
-    # Supporting Staff must never access the full movement/audit view.
     if current_user()["role"] == "Supporting Staff":
         return redirect(
             url_for("supporting_file_view", file_id=file_id)
@@ -664,9 +638,6 @@ def forward(file_id):
 @app.route("/ack/<file_id>",methods=["POST"])
 @supporting_staff_required
 def acknowledge(file_id):
-    # This is a physical-delivery confirmation by the Supporting Staff member.
-    # It confirms to the Administrator/Zonal Inspector that the file was physically
-    # submitted to the selected Secretariat branch; it is not a branch receipt.
     t=now(); official=official_name(); c=db()
     m=c.execute("""SELECT * FROM movements WHERE file_id=%s AND status='Forwarded'
                    ORDER BY id DESC LIMIT 1""",(file_id,)).fetchone()
@@ -731,12 +702,6 @@ def _norm_header(value):
 
 
 def _read_corps_upload(upload):
-    """Read CSV or XLSX upload and return normalized dictionaries.
-
-    The NYSC source workbooks used by the Zonal Office have an Expected,
-    Present and Absent sheet. For master Corps Member import we deliberately
-    read the Expected sheet so Present/Absent sheets do not create duplicates.
-    """
     filename=(upload.filename or "").lower()
     raw=upload.read()
     if filename.endswith(".csv"):
@@ -757,7 +722,6 @@ def _read_corps_upload(upload):
         for vals in values[1:]:
             row={headers[i]: ("" if i>=len(vals) or vals[i] is None else str(vals[i]).strip())
                  for i in range(len(headers)) if headers[i]}
-            # Ignore completely blank rows (common in Absent/other worksheets).
             if any(row.values()):
                 rows.append(row)
         return rows
@@ -765,13 +729,6 @@ def _read_corps_upload(upload):
 
 
 def _infer_lga_from_filename(filename):
-    """Infer the LGA for the standard NYSC download filenames.
-
-    A/C/unsuffixed filenames represent batches, not different LGAs:
-    e.g. rimiC.xlsx, rimiA.xlsx and rimi.xlsx are all Rimi.
-    Katsina is intentionally not inferred because the zone contains
-    both Katsina A and Katsina B; the importer must be told which one.
-    """
     base=os.path.splitext(os.path.basename(filename or ""))[0].strip().lower()
     base=re.sub(r"[_\-\s]*(?:a|b|c)$","",base)
     mapping={
@@ -785,11 +742,8 @@ def _infer_lga_from_filename(filename):
 
 
 def _normalize_inspection_lga(value, component=""):
-    """Normalize workbook LGA/component values to the seven zone LGAs."""
     v=str(value or "").strip().upper()
     comp=str(component or "").strip().upper()
-    # The master zonal workbook stores both Katsina A and Katsina B rows as
-    # LGA=KATSINA, while Component identifies the actual zonal LGA.
     if v in ("KATSINA", "KATSINA MAIN", "KATSINA METROPOLIS"):
         if comp in ("KATSINA A", "KATSINA B"):
             return comp.title()
@@ -803,7 +757,6 @@ def _normalize_inspection_lga(value, component=""):
 
 
 def _legacy_corps_fields(row, filename="", selected_lga=""):
-    """Map both the Zonal master workbook and raw NYSC downloads."""
     state=_pick(row,"state_code","statecode","state code","state-code","code")
 
     name=_pick(row,"full_name","corps_member_name","corps member name","name","corps name")
@@ -905,13 +858,6 @@ def inspections():
 @app.route("/inspection/import",methods=["GET","POST"])
 @inspection_management_required
 def inspection_import():
-    """Fast, PostgreSQL-safe Corps Member importer.
-
-    The previous implementation performed several database round-trips for every
-    row.  With a 2,000+ row zonal workbook that could exceed Gunicorn's request
-    timeout.  This version validates rows in memory, bulk-creates missing PPAs,
-    then performs batched PostgreSQL upserts for Corps Members.
-    """
     if request.method == "POST":
         uploads=[u for u in request.files.getlist("corps_file") if u and u.filename]
         selected_lga=(request.form.get("lga") or "").strip()
@@ -923,9 +869,6 @@ def inspection_import():
             return redirect(url_for("inspection_import"))
 
         try:
-            # -------------------------------------------------------------
-            # 1. Read and validate everything before opening the DB write path.
-            # -------------------------------------------------------------
             valid=[]
             errors=0
             processed=0
@@ -965,10 +908,6 @@ def inspection_import():
                     flash(" | ".join(error_rows[:8]),"error")
                 return redirect(url_for("inspection_import"))
 
-            # A user may upload overlapping batch files. PostgreSQL cannot
-            # update the same ON CONFLICT key twice within one INSERT statement,
-            # so collapse duplicate State Codes before the bulk upsert. The last
-            # valid occurrence wins, while `processed` still reports every row.
             deduped={}
             for f in valid:
                 deduped[f["state"].strip()]=f
@@ -978,9 +917,6 @@ def inspection_import():
             t=now()
             user_id=current_user()["id"]
 
-            # -------------------------------------------------------------
-            # 2. Bulk-create PPAs. UNIQUE(name,lga) prevents duplicates.
-            # -------------------------------------------------------------
             ppa_keys=[]
             seen_ppas=set()
             for f in valid:
@@ -1000,7 +936,6 @@ def inspection_import():
                     ON CONFLICT (name,lga) DO NOTHING
                 """,params)
 
-            # Fetch all relevant PPA ids in one query.
             ppa_where=",".join(["(%s,%s)"]*len(ppa_keys))
             ppa_params=[]
             for name,lga in ppa_keys:
@@ -1011,9 +946,6 @@ def inspection_import():
             """,ppa_params).fetchall()
             ppa_map={(r["name"].lower(),r["lga"].lower()):r["id"] for r in ppa_rows}
 
-            # -------------------------------------------------------------
-            # 3. Determine new vs existing State Codes with one query.
-            # -------------------------------------------------------------
             states=[]
             seen_states=set()
             for f in valid:
@@ -1023,18 +955,12 @@ def inspection_import():
                     states.append(st)
 
             existing_states=set()
-            # PostgreSQL has a practical parameter limit; 2,458 is well below
-            # it, but chunking keeps this safe for larger future imports.
             for i in range(0,len(states),500):
                 part=states[i:i+500]
                 ph=",".join(["%s"]*len(part))
                 found=c.execute(f"SELECT state_code FROM corps_members WHERE state_code IN ({ph})",part).fetchall()
                 existing_states.update(r["state_code"] for r in found)
 
-            # -------------------------------------------------------------
-            # 4. Bulk upsert Corps Members in chunks. Each chunk is one SQL
-            # statement, instead of 4+ network round-trips per row.
-            # -------------------------------------------------------------
             new_count=sum(1 for f in valid if f["state"] not in existing_states)
             updated_count=sum(1 for f in valid if f["state"] in existing_states)
 
@@ -1165,7 +1091,6 @@ def inspection_record():
     iid=next_new_inspection_id(); t=now(); query=1 if status=="Absent" else 0
     c.execute("""INSERT INTO inspection_records(inspection_id,corps_member_id,ppa_id,inspected_by,attendance_status,query_issued,other_reason,remarks,inspected_at)
                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",(iid,member_id,ppa_id,u["id"],status,query,other,remarks,t))
-    # Keep the legacy inspections table populated for compatibility with existing reporting screens.
     findings=f"Attendance status: {status}. Query issued: {'Yes' if query else 'No'}." + (f" Reason: {other}." if other else "")
     c.execute("""INSERT INTO inspections(inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status)
                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",(iid,member["ppa_id"] and c.execute("SELECT lga FROM ppa_establishments WHERE id=%s",(ppa_id,)).fetchone()["lga"],member["ppa_id"] and c.execute("SELECT name FROM ppa_establishments WHERE id=%s",(ppa_id,)).fetchone()["name"],member["full_name"],"PPA Attendance Inspection",findings,remarks,u["full_name"],t,"Completed"))
@@ -1198,7 +1123,6 @@ def download(name):
 @app.route("/admin/db-inspection")
 @admin_required
 def db_inspection():
-    """Read-only PostgreSQL inspection page for the Administrator."""
     with db() as c:
         tables = c.execute("""
             SELECT tablename
