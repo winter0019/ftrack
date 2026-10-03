@@ -57,40 +57,32 @@ def db():
 
 @app.after_request
 def integrate_inspection_ui(response):
-    """Server-side integration of Inspection into the existing FileTrack UI."""
+    """Add the dashboard inspection card without modifying the shared navigation."""
     try:
         if not session.get("user_id") or "text/html" not in (response.content_type or ""):
             return response
         if request.path in ("/login", "/setup") or request.path.startswith("/admin/db-inspection"):
             return response
-        html=response.get_data(as_text=True)
-        if 'data-filetrack-inspection="1"' in html:
-            return response
 
-        nav_link='<a href="/inspections" data-filetrack-inspection="1" style="margin-left:18px;font-weight:700;text-decoration:none;color:inherit;">Inspection</a>'
-        inspection_card='''
-<section data-filetrack-inspection="1" style="margin:24px 0;padding:22px 24px;border:1px solid #dfe8e4;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,81,61,.07);">
+        html = response.get_data(as_text=True)
+        inspection_card = """
+<section data-filetrack-inspection-card="1" style="margin:24px 0;padding:22px 24px;border:1px solid #dfe8e4;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,81,61,.07);">
   <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#12865f;text-transform:uppercase;margin-bottom:6px;">FIELD MONITORING</div>
   <h2 style="margin:0 0 7px;color:#17262f;font-size:24px;">Inspection &amp; PPA Monitoring</h2>
   <p style="margin:0 0 15px;color:#6b7c84;">Manage PPA assignments, Corps Member records and attendance inspections.</p>
   <a href="/inspections" style="display:inline-block;background:#129b68;color:#fff;padding:11px 17px;border-radius:10px;text-decoration:none;font-weight:700;">Open Inspection Module -&gt;</a>
-</section>'''
-        import re
-        html2=re.sub(r'(<a\b[^>]*>\s*Officials\s*</a>)', r'\1'+nav_link, html, count=1, flags=re.I)
-        if html2==html:
-            html2=html.replace('</nav>',nav_link+'</nav>',1)
-        if html2==html:
-            html2=html.replace('</header>',nav_link+'</header>',1)
-        html=html2
-        if request.path=="/" and "Inspection &amp; PPA Monitoring" not in html:
-            m=re.search(r'(<h1[^>]*>\s*File Movement Dashboard\s*</h1>)',html,flags=re.I)
-            if m:
-                pos=m.end(); html=html[:pos]+inspection_card+html[pos:]
-            else:
-                html=html.replace('</main>',inspection_card+'</main>',1)
+</section>"""
+        if request.path == "/" and 'data-filetrack-inspection-card="1"' not in html:
+            match = re.search(r'(<h1[^>]*>\s*File Movement Dashboard\s*</h1>)', html, flags=re.I)
+            if match:
+                position = match.end()
+                html = html[:position] + inspection_card + html[position:]
+            elif "</main>" in html:
+                html = html.replace("</main>", inspection_card + "</main>", 1)
+
         response.set_data(html)
-        response.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"]="no-cache"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     except Exception:
         pass
     return response
