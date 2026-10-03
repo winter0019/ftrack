@@ -13,7 +13,8 @@ body{margin:0;background:#f4f8f6;color:#17262e;font:14px Inter,Segoe UI,Arial,sa
 
 .top nav{display:flex;gap:5px}
 
-.top nav a{color:#fff;text-decoration:none;padding:10px 13px;border-radius:9px}
+.top nav a{color:#fff;text-decoration:none;padding:10px 13px;border-radius:9px;transition:background 0.2s}
+.top nav a:hover{background:rgba(255,255,255,0.1)}
 
 .cta{background:#15945e!important;color:#fff!important;border:0;border-radius:10px;padding:12px 17px;text-decoration:none;font-weight:800;cursor:pointer}
 
@@ -21,4 +22,41 @@ body{margin:0;background:#f4f8f6;color:#17262e;font:14px Inter,Segoe UI,Arial,sa
 
 .wrap{max-width:1280px;margin:auto;padding:34px 24px 60px}
 
-.head{display:flex;justify-content:space-between;align-items:end;gap:20
+.head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:28px}
+
+/* Compact summary metric cards */
+.stats-grid, .metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.stat-card, .box {
+  background: #fff;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #e2eae6;
+  box-shadow: 0 2px 8px rgba(15,81,61,0.04);
+}
+
+.stat-card h3, .box span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6b7c84;
+  margin: 0 0 6px 0;
+}
+
+.stat-card .value, .box h2 {
+  font-size: 26px;
+  font-weight: 800;
+  color: #17262f;
+  margin: 0;
+}
+
+@media(max-width:768px){
+  .top nav{display:none}
+  .menu{display:block}
+  .head{flex-direction:column;align-items:flex-start}
+}
