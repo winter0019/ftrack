@@ -498,6 +498,8 @@ img, video, iframe, canvas, svg { max-width: 100%; }
 
     {% if current_user and current_user['role']=='LGI Officer' %}
       <a href="{{ url_for('lgi_corps_search') }}">Directory</a>
+    {% elif current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('corps_members_import') }}">Directory</a>
     {% endif %}
 
     {% if current_user and current_user['role']=='Administrator' %}
