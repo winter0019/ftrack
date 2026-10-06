@@ -206,6 +206,18 @@ def init_db():
           inspected_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS corps_member_next_of_kin(
+          id BIGSERIAL PRIMARY KEY,
+          state_code TEXT UNIQUE NOT NULL REFERENCES corps_members(state_code) ON DELETE CASCADE,
+          lga TEXT NOT NULL,
+          next_of_kin_name TEXT NOT NULL,
+          relationship TEXT,
+          phone TEXT,
+          address TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
         """)
@@ -1007,7 +1019,123 @@ def inspections():
     return redirect(url_for("dashboard"))
 
 
-@app.route("/corps-members/import", methods=["GET", "POST"])
+def _next_of_kin_fields(row, selected_lga=""):
+    state=_pick(row,"state_code","statecode","state code","state-code","code")
+    name=_pick(row,"next_of_kin_name","next of kin name","next_of_kin","next of kin","nok name","nok")
+    relationship=_pick(row,"relationship","relationship to corps member","relation","next of kin relationship")
+    phone=_pick(row,"next_of_kin_phone","next of kin phone","nok phone","nok_phone","phone","gsm","gsmno","phone number")
+    address=_pick(row,"next_of_kin_address","next of kin address","nok address","address","residential address")
+    raw_lga=_pick(row,"lga","local government","local government area","next of kin lga","nok lga")
+    lga=_normalize_inspection_lga(raw_lga) or selected_lga
+    return {"state":state.strip(),"name":name.strip(),"relationship":relationship.strip(),"phone":phone.strip(),"address":address.strip(),"lga":lga.strip()}
+
+
+@app.route("/directory")
+@login_required
+def directory():
+    u=current_user()
+    if u["role"] == "LGI Officer":
+        return render_template("directory.html", mode="lgi")
+    if u["role"] in ("Administrator", "Zonal Inspector"):
+        return render_template("directory.html", mode="zi")
+    flash("The general Corps Members Directory is not available to Supporting Staff.","error")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/next-of-kin-search")
+@login_required
+def next_of_kin_search():
+    u=current_user()
+    if u["role"] != "LGI Officer":
+        flash("Next of Kin search is available to LGI Officers only.","error")
+        return redirect(url_for("dashboard"))
+    assigned_lga=(u.get("lga") or "").strip()
+    if assigned_lga not in LGAS:
+        flash("Your account has no valid assigned LGA. Contact the Administrator.","error")
+        return redirect(url_for("dashboard"))
+    q=request.args.get("q","").strip()
+    rows=[]
+    if q:
+        c=db(); like=f"%{q}%"
+        rows=c.execute("""
+            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,nok.lga,
+                   cm.full_name AS corps_member_name
+            FROM corps_member_next_of_kin nok
+            JOIN corps_members cm ON cm.state_code=nok.state_code
+            JOIN ppa_establishments p ON p.id=cm.ppa_id
+            WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
+            ORDER BY cm.full_name LIMIT 250
+        """,(assigned_lga,assigned_lga,like)).fetchall(); c.close()
+    return render_template("next_of_kin_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
+
+
+@app.route("/next-of-kin/import",methods=["GET","POST"])
+@inspection_management_required
+def next_of_kin_import():
+    if request.method == "POST":
+        uploads=[u for u in request.files.getlist("nok_file") if u and u.filename]
+        selected_lga=(request.form.get("lga") or "").strip()
+        if not uploads:
+            flash("Please select at least one CSV or XLSX file.","error"); return redirect(url_for("next_of_kin_import"))
+        if selected_lga not in LGAS:
+            flash("Please select the LGA for this Next of Kin import.","error"); return redirect(url_for("next_of_kin_import"))
+        valid=[]; errors=0; processed=0; error_rows=[]
+        try:
+            for upload in uploads:
+                filename=upload.filename
+                try: rows=_read_corps_upload(upload)
+                except Exception as exc: errors+=1; error_rows.append(f"{filename}: {exc}"); continue
+                for idx,row in enumerate(rows,start=2):
+                    f=_next_of_kin_fields(row,selected_lga); processed+=1
+                    missing=[]
+                    if not f["state"]: missing.append("State Code")
+                    if not f["name"]: missing.append("Next of Kin Name")
+                    if missing: errors+=1; error_rows.append(f"{filename} row {idx}: {', '.join(missing)} required"); continue
+                    if f["lga"] != selected_lga: errors+=1; error_rows.append(f"{filename} row {idx}: LGA '{f['lga']}' does not match selected LGA '{selected_lga}'"); continue
+                    valid.append(f)
+            deduped={f["state"]:f for f in valid}; valid=list(deduped.values())
+            if not valid:
+                flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.","error")
+                if error_rows: flash(" | ".join(error_rows[:8]),"error")
+                return redirect(url_for("next_of_kin_import"))
+            c=db(); t=now(); states=[f["state"] for f in valid]
+            existing=c.execute("SELECT state_code FROM corps_members WHERE state_code = ANY(%s)",(states,)).fetchall()
+            existing_states={r["state_code"] for r in existing}
+            missing_states=[st for st in states if st not in existing_states]
+            if missing_states:
+                errors+=len(missing_states); error_rows.extend([f"{st}: Corps Member State Code does not exist in the directory" for st in missing_states[:8]])
+                valid=[f for f in valid if f["state"] in existing_states]
+            if valid:
+                check=c.execute("""SELECT cm.state_code,p.lga FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id WHERE cm.state_code = ANY(%s)""",([f["state"] for f in valid],)).fetchall()
+                lga_map={r["state_code"]:r["lga"] for r in check}; safe=[]
+                for f in valid:
+                    if lga_map.get(f["state"]) != selected_lga: errors+=1; error_rows.append(f"{f['state']}: Corps Member is not assigned to {selected_lga}")
+                    else: safe.append(f)
+                valid=safe
+            if not valid:
+                c.rollback(); c.close(); flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.","error")
+                if error_rows: flash(" | ".join(error_rows[:8]),"error")
+                return redirect(url_for("next_of_kin_import"))
+            states=[f["state"] for f in valid]
+            found=c.execute("SELECT state_code FROM corps_member_next_of_kin WHERE state_code = ANY(%s)",(states,)).fetchall(); existing_nok={r["state_code"] for r in found}
+            new_count=sum(1 for f in valid if f["state"] not in existing_nok); updated_count=sum(1 for f in valid if f["state"] in existing_nok)
+            values=[]; params=[]
+            for f in valid:
+                values.append("(%s,%s,%s,%s,%s,%s,%s,%s)"); params.extend([f["state"],f["lga"],f["name"],f["relationship"],f["phone"],f["address"],t,t])
+            c.execute(f"""INSERT INTO corps_member_next_of_kin(state_code,lga,next_of_kin_name,relationship,phone,address,created_at,updated_at)
+                VALUES {','.join(values)} ON CONFLICT (state_code) DO UPDATE SET lga=EXCLUDED.lga,next_of_kin_name=EXCLUDED.next_of_kin_name,relationship=EXCLUDED.relationship,phone=EXCLUDED.phone,address=EXCLUDED.address,updated_at=EXCLUDED.updated_at""",params)
+            c.commit(); c.close()
+            flash(f"Next of Kin import completed: {processed} rows processed, {new_count} new, {updated_count} updated, {errors} errors.","success" if errors==0 else "error")
+            if error_rows: flash(" | ".join(error_rows[:8]),"error")
+        except Exception as exc:
+            try: c.rollback(); c.close()
+            except Exception: pass
+            flash(f"Next of Kin import failed: {exc}","error")
+        return redirect(url_for("next_of_kin_import"))
+    return render_template("next_of_kin_import.html",lgas=LGAS)
+
+
+@app.route("/corps-members/import", methods=["GET", "POST"] )
 @inspection_management_required
 def corps_members_import():
     """Dedicated general corps-member directory import, separate from inspection navigation."""
