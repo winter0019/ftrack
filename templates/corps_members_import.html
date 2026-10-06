@@ -31,7 +31,7 @@ label{display:block;font-weight:600;margin:15px 0 7px}
 <p><b>Example:</b> <code>rimiC.xlsx</code>, <code>rimiA.xlsx</code> and <code>rimi.xlsx</code> are automatically treated as <b>Rimi</b>. The A/C/unsuffixed suffix is treated as the NYSC batch, not as the LGA.</p>
 <p>For <code>katsinaC.xlsx</code>, <code>katsinaA.xlsx</code> and <code>katsina.xlsx</code>, select <b>Katsina A</b> or <b>Katsina B</b> because the filename alone does not identify the component. The consolidated zonal master already contains the Component column, so no manual selection is needed.</p>
 <p>Existing State Codes are updated; new State Codes are inserted. Existing PostgreSQL data is not deleted or reset.</p>
-<p style="display:flex;gap:14px;flex-wrap:wrap;margin-top:20px"><a class="btn" href="{{url_for('dashboard')}}">← Back to Dashboard</a><a class="btn secondary" href="{{url_for('inspections')}}">← Back to Inspection Management</a></p>
+<p style="display:flex;gap:14px;flex-wrap:wrap;margin-top:20px"><a class="btn" href="{{url_for('dashboard')}}">← Back to Dashboard</a><a class="btn" href="{{url_for('next_of_kin_import')}}">Import Next of Kin</a><a class="btn secondary" href="{{url_for('directory')}}">← Back to Directory</a></p>
 </div>
 {% with messages=get_flashed_messages(with_categories=true) %}
 {% for cat,msg in messages %}<div class="card"><b>{{cat|title}}:</b> {{msg}}</div>{% endfor %}

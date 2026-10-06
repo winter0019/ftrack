@@ -496,10 +496,8 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
     <a href="{{ url_for('inspections') }}">Inspection</a>
 
-    {% if current_user and current_user['role']=='LGI Officer' %}
-      <a href="{{ url_for('lgi_corps_search') }}">Directory</a>
-    {% elif current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
-      <a href="{{ url_for('corps_members_import') }}">Directory</a>
+    {% if current_user and current_user['role'] in ('LGI Officer', 'Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('directory') }}">Directory</a>
     {% endif %}
 
     {% if current_user and current_user['role']=='Administrator' %}
