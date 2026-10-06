@@ -220,6 +220,11 @@ def init_db():
 
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS state_code TEXT;
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS registered_office TEXT;
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_by TEXT;
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_at TEXT;
+        CREATE INDEX IF NOT EXISTS ix_files_state_code ON files(state_code);
         """)
 
 def user_count():
@@ -321,10 +326,58 @@ def movement_required(view):
         return view(*args,**kwargs)
     return wrapped
 
-def next_file_id():
-    c=db()
+def normalize_state_code(value):
+    """Normalize a NYSC State Code for reliable matching."""
+    value=(value or "").strip().upper().replace(" ", "")
+    return value
+
+def valid_state_code(value):
+    return bool(re.fullmatch(r"[A-Z]{2}/\d{2}[A-Z]/\d{1,6}", normalize_state_code(value)))
+
+def state_code_from_legacy_reference(value):
+    """Recognize legacy records where the old Reference No. field stored State Code."""
+    value=normalize_state_code(value)
+    return value if valid_state_code(value) else ""
+
+def active_file_matches(c, state_code):
+    """Return active/open files for a Corps Member State Code. Put Away files are excluded."""
+    state_code=normalize_state_code(state_code)
+    if not state_code:
+        return []
+    # The advisory lock prevents two officers from registering the same State Code simultaneously.
+    c.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (state_code,))
+    rows=c.execute("""
+        SELECT * FROM files
+        WHERE COALESCE(NULLIF(state_code,''), '')=%s
+           OR (COALESCE(NULLIF(state_code,''),'')='' AND UPPER(REPLACE(COALESCE(reference_no,''),' ',''))=%s)
+        ORDER BY id DESC
+    """, (state_code,state_code)).fetchall()
+    return [r for r in rows if (r.get("status") or "").strip().lower() not in ("put away", "closed")]
+
+def next_file_id(c, state_code=None):
+    """Generate the new traceable File ID. State-code files use the approved identity format."""
+    if state_code:
+        state_code=normalize_state_code(state_code)
+        rows=c.execute("SELECT file_id FROM files WHERE state_code=%s OR UPPER(REPLACE(COALESCE(reference_no,''),' ',''))=%s", (state_code,state_code)).fetchall()
+        highest=0
+        # New format: KTZO/FM/DDMMYY/BATCH/SERIAL/NNN
+        # The KT prefix of the State Code is intentionally omitted from the visible File ID.
+        parts=state_code.split('/')
+        visible_state=parts[1:] if len(parts) >= 3 else parts
+        visible_suffix='/'.join(visible_state)
+        for row in rows:
+            fid=(row["file_id"] or "").strip()
+            m=re.match(r"^KTZO/FM/\d{6}/(.+)/(\d{3,})$", fid, re.I)
+            if m:
+                # Count only registrations for this same Corps Member identity.
+                body=m.group(1)
+                if body.upper()==visible_suffix.upper():
+                    highest=max(highest,int(m.group(2)))
+        if highest==0:
+            # Preserve the simple first-registration behaviour even when old-format records exist.
+            highest=0
+        return f"KTZO/FM/{datetime.now().strftime('%d%m%y')}/{visible_suffix}/{highest+1:03d}"
     n=c.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"]
-    c.close()
     return f"KZO-FM-{datetime.now().year}-{n+1:04d}"
 
 def next_inspection_id():
@@ -530,18 +583,30 @@ def lgi_send_file():
         if not title:
             flash("File/document title is required.","error")
             return redirect(url_for("lgi_send_file"))
-        t=now(); fid=next_file_id(); attachment=None
-        uploaded=request.files.get("attachment")
-        if uploaded and uploaded.filename:
-            attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
-            uploaded.save(os.path.join(UPLOADS,attachment))
+        state_code=normalize_state_code(request.form.get("state_code") or state_code_from_legacy_reference(request.form.get("reference_no")))
+        if state_code and not valid_state_code(state_code):
+            flash("Invalid State Code. Use the NYSC format, e.g. KT/26A/1741.","error")
+            return redirect(url_for("lgi_send_file"))
+        t=now(); attachment=None
         c=db()
         try:
+            if state_code:
+                existing=active_file_matches(c,state_code)
+                if existing:
+                    f=existing[0]
+                    flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.","error")
+                    c.rollback()
+                    c.close()
+                    return redirect(url_for("lgi_send_file"))
+            fid=next_file_id(c,state_code); uploaded=request.files.get("attachment")
+            if uploaded and uploaded.filename:
+                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
+                uploaded.save(os.path.join(UPLOADS,attachment))
             c.execute("""INSERT INTO files
-                (file_id,title,reference_no,lga,lgi_name,received_by,received_at,priority,
+                (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                  description,attachment,status,current_location,created_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (fid,title,request.form.get("reference_no"),assigned_lga,
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (fid,title,request.form.get("reference_no"),state_code,"Katsina Zonal Office",assigned_lga,
                  u["full_name"],u["full_name"],t,request.form.get("priority","Normal"),
                  request.form.get("remarks") or request.form.get("description"),attachment,
                  "Submitted","Katsina Zonal Office",t))
@@ -672,25 +737,42 @@ def receive():
         if not title:
             flash("File/document title is required.","error")
             return redirect(url_for("receive"))
-        t=now(); fid=next_file_id(); attachment=None
-        uploaded=request.files.get("attachment")
-        if uploaded and uploaded.filename:
-            attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
-            uploaded.save(os.path.join(UPLOADS,attachment))
-        official=official_name()
-        c=db()
-        c.execute("""INSERT INTO files
-        (file_id,title,reference_no,lga,lgi_name,received_by,received_at,priority,
-         description,attachment,status,current_location,created_at)
-        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (fid,title,request.form.get("reference_no"),request.form["lga"],
-         request.form.get("lgi_name"),official,t,request.form.get("priority","Normal"),
-         request.form.get("description"),attachment,"Received",
-         "Katsina Zonal Office",t))
-        c.execute("""INSERT INTO audit_logs
-        (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-        (fid,"FILE RECEIVED",official,"Received from "+request.form["lga"],t))
-        c.commit(); c.close()
+        state_code=normalize_state_code(request.form.get("state_code") or state_code_from_legacy_reference(request.form.get("reference_no")))
+        if state_code and not valid_state_code(state_code):
+            flash("Invalid State Code. Use the NYSC format, e.g. KT/26A/1741.","error")
+            return redirect(url_for("receive"))
+        t=now(); official=official_name(); c=db()
+        try:
+            if state_code:
+                existing=active_file_matches(c,state_code)
+                if existing:
+                    f=existing[0]
+                    flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.","error")
+                    c.rollback()
+                    c.close()
+                    return redirect(url_for("receive"))
+            fid=next_file_id(c,state_code); attachment=None
+            uploaded=request.files.get("attachment")
+            if uploaded and uploaded.filename:
+                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
+                uploaded.save(os.path.join(UPLOADS,attachment))
+            c.execute("""INSERT INTO files
+            (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
+             description,attachment,status,current_location,created_at)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (fid,title,request.form.get("reference_no"),state_code,"Katsina Zonal Office",request.form["lga"],
+             request.form.get("lgi_name"),official,t,request.form.get("priority","Normal"),
+             request.form.get("description"),attachment,"Received",
+             "Katsina Zonal Office",t))
+            c.execute("""INSERT INTO audit_logs
+            (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+            (fid,"FILE RECEIVED",official,"Received from "+request.form["lga"],t))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
         flash(fid+" registered successfully.","success")
 
         if current_user()["role"] == "Supporting Staff":
@@ -732,7 +814,7 @@ def supporting_file_search():
     )
 
 
-@app.route("/supporting-file/<file_id>")
+@app.route("/supporting-file/<path:file_id>")
 @login_required
 def supporting_file_view(file_id):
     u = current_user()
@@ -760,7 +842,7 @@ def supporting_file_view(file_id):
     )
 
 
-@app.route("/file/<file_id>")
+@app.route("/file/<path:file_id>")
 @login_required
 @lgi_report_only
 def detail(file_id):
@@ -778,7 +860,7 @@ def detail(file_id):
     c.close()
     return render_template("detail.html",f=f,movements=movements,audit=audit,branches=BRANCHES)
 
-@app.route("/forward/<file_id>",methods=["POST"])
+@app.route("/forward/<path:file_id>",methods=["POST"])
 @movement_required
 def forward(file_id):
     t=now(); c=db()
@@ -799,7 +881,7 @@ def forward(file_id):
     flash(f"{file_id} forwarded to {to}.","success")
     return redirect(url_for("detail",file_id=file_id))
 
-@app.route("/ack/<file_id>",methods=["POST"])
+@app.route("/ack/<path:file_id>",methods=["POST"])
 @supporting_staff_required
 def acknowledge(file_id):
     t=now(); official=official_name(); c=db()
@@ -826,7 +908,7 @@ def acknowledge(file_id):
         url_for("supporting_file_view", file_id=file_id)
     )
 
-@app.route("/return/<file_id>",methods=["POST"])
+@app.route("/return/<path:file_id>",methods=["POST"])
 @movement_required
 def return_file(file_id):
     t=now(); official=official_name(); c=db()
@@ -846,6 +928,25 @@ def return_file(file_id):
      request.form.get("remarks") or "Returned to Zonal Office",t))
     c.commit(); c.close()
     flash("File returned to Zonal Office.","success")
+    return redirect(url_for("detail",file_id=file_id))
+
+@app.route("/put-away/<path:file_id>",methods=["POST"])
+@movement_required
+def put_away(file_id):
+    """Close/archive a completed file so a future file can be registered for the same Corps Member."""
+    t=now(); official=official_name(); c=db()
+    f=c.execute("SELECT * FROM files WHERE file_id=%s",(file_id,)).fetchone()
+    if not f:
+        c.close(); return "File not found",404
+    if (f["status"] or "").strip().lower()=="put away":
+        c.close(); flash("This file has already been Put Away.","error"); return redirect(url_for("detail",file_id=file_id))
+    if (f["status"] or "").strip().lower()=="forwarded":
+        c.close(); flash("A file awaiting physical submission cannot be Put Away. Confirm delivery or return the file first.","error"); return redirect(url_for("detail",file_id=file_id))
+    c.execute("UPDATE files SET status='Put Away', put_away_by=%s, put_away_at=%s WHERE file_id=%s",(official,t,file_id))
+    c.execute("""INSERT INTO audit_logs(file_id,action,official,details,created_at)
+                 VALUES(%s,%s,%s,%s,%s)""",(file_id,"FILE PUT AWAY",official,"File closed and placed in records/archive. A new active file may now be registered for the same State Code.",t))
+    c.commit(); c.close()
+    flash(f"{file_id} has been Put Away successfully.","success")
     return redirect(url_for("detail",file_id=file_id))
 
 def inspection_management_required(view):
