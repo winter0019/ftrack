@@ -955,6 +955,36 @@
         </div>
     </div>
 
+    {% if current_user['role'] == 'Zonal Inspector' %}
+    <div class="dashboard-section dashboard-flat-section">
+        <h2>Search File</h2>
+        <p class="section-description">Recent file records are hidden. Enter the Corps Member's State Code to view the file and its current location.</p>
+        <form method="get" action="{{ url_for('dashboard') }}" style="display:flex;gap:12px;max-width:720px;align-items:center;flex-wrap:wrap;">
+            <input type="text" name="state_code" value="{{ search_state_code|default('') }}" placeholder="Enter State Code e.g. KT/26A/1741" required style="flex:1;min-width:280px;padding:15px 16px;border:1px solid #d7e1de;border-radius:12px;font-size:16px;">
+            <button class="cta dashboard-cta" type="submit">Search File</button>
+        </form>
+
+        {% if search_state_code %}
+        <div style="margin-top:22px;">
+            {% if search_results %}
+                {% for r in search_results %}
+                <div class="dashboard-card" style="min-height:0;margin-bottom:12px;">
+                    <b>{{ r['file_id'] }}</b>
+                    <span><strong>Document:</strong> {{ r['title'] }}</span>
+                    <span><strong>Reference No.:</strong> {{ r['reference_no'] or '—' }}</span>
+                    <span><strong>State Code:</strong> {{ r['state_code'] or search_state_code }}</span>
+                    <span><strong>Registered Office:</strong> {{ r['registered_office'] or r['lga'] or '—' }}</span>
+                    <span><strong>Current Location:</strong> {{ r['current_location'] or '—' }}</span>
+                    <span><strong>Status:</strong> {{ r['status'] or '—' }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="dashboard-section-box"><p class="section-description" style="margin:0;">No file was found for State Code <strong>{{ search_state_code }}</strong>.</p></div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
     <div class="dashboard-section dashboard-flat-section">
         <h2>Recent Records</h2>
         <div class="records-wrap">
@@ -973,6 +1003,7 @@
             </table>
         </div>
     </div>
+    {% endif %}
 
 {% endif %}
 
