@@ -218,28 +218,30 @@ def init_db():
           updated_at TEXT NOT NULL
         );
 
-        -- Keep Next-of-Kin LGA synchronized with the Corps Member's current PPA/LGA.
-        -- This also covers reposting performed outside KATZIMS (for example by an
-        -- external reposting/automation agent) because the trigger runs at database level.
-        CREATE OR REPLACE FUNCTION sync_corps_member_nok_lga()
-        RETURNS TRIGGER AS $$
+        CREATE TABLE IF NOT EXISTS reposting_movements(
+          id BIGSERIAL PRIMARY KEY, state_code TEXT NOT NULL, corps_member_name TEXT NOT NULL,
+          from_lga TEXT NOT NULL, to_lga TEXT NOT NULL, reposted_at TEXT NOT NULL,
+          detected_by TEXT DEFAULT 'System', published INTEGER DEFAULT 0, published_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS reposting_notifications(
+          id BIGSERIAL PRIMARY KEY, reposting_id BIGINT NOT NULL REFERENCES reposting_movements(id) ON DELETE CASCADE,
+          lga TEXT NOT NULL, movement_type TEXT NOT NULL, viewed INTEGER DEFAULT 0, viewed_at TEXT
+        );
+        CREATE OR REPLACE FUNCTION katzims_record_reposting() RETURNS TRIGGER AS $$
+        DECLARE old_lga TEXT; new_lga TEXT; move_id BIGINT;
         BEGIN
-          IF NEW.ppa_id IS DISTINCT FROM OLD.ppa_id THEN
-            UPDATE corps_member_next_of_kin nok
-               SET lga = p.lga, updated_at = CURRENT_TIMESTAMP::text
-              FROM ppa_establishments p
-             WHERE nok.state_code = NEW.state_code
-               AND p.id = NEW.ppa_id;
-          END IF;
+          IF OLD.ppa_id IS NULL OR NEW.ppa_id IS NULL OR OLD.ppa_id = NEW.ppa_id THEN RETURN NEW; END IF;
+          SELECT lga INTO old_lga FROM ppa_establishments WHERE id=OLD.ppa_id;
+          SELECT lga INTO new_lga FROM ppa_establishments WHERE id=NEW.ppa_id;
+          IF old_lga IS NULL OR new_lga IS NULL OR old_lga = new_lga THEN RETURN NEW; END IF;
+          INSERT INTO reposting_movements(state_code,corps_member_name,from_lga,to_lga,reposted_at)
+          VALUES(NEW.state_code,NEW.full_name,old_lga,new_lga,COALESCE(NEW.updated_at,TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS'))) RETURNING id INTO move_id;
+          INSERT INTO reposting_notifications(reposting_id,lga,movement_type) VALUES(move_id,old_lga,'Reposted Out'),(move_id,new_lga,'Reposted In');
+          UPDATE corps_member_next_of_kin SET lga=new_lga,updated_at=COALESCE(NEW.updated_at,TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')) WHERE state_code=NEW.state_code;
           RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS trg_sync_corps_member_nok_lga ON corps_members;
-        CREATE TRIGGER trg_sync_corps_member_nok_lga
-        AFTER UPDATE OF ppa_id ON corps_members
-        FOR EACH ROW
-        EXECUTE FUNCTION sync_corps_member_nok_lga();
+        END; $$ LANGUAGE plpgsql;
+        DROP TRIGGER IF EXISTS trg_katzims_record_reposting ON corps_members;
+        CREATE TRIGGER trg_katzims_record_reposting AFTER UPDATE OF ppa_id ON corps_members FOR EACH ROW EXECUTE FUNCTION katzims_record_reposting();
 
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
@@ -248,17 +250,6 @@ def init_db():
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_by TEXT;
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_at TEXT;
         CREATE INDEX IF NOT EXISTS ix_files_state_code ON files(state_code);
-        """)
-
-        # Repair any stale Next-of-Kin LGA values from earlier repostings.
-        # The Corps Member's current PPA/LGA is the authoritative location.
-        c.execute("""
-            UPDATE corps_member_next_of_kin nok
-               SET lga = p.lga, updated_at = CURRENT_TIMESTAMP::text
-              FROM corps_members cm
-              JOIN ppa_establishments p ON p.id = cm.ppa_id
-             WHERE cm.state_code = nok.state_code
-               AND nok.lga IS DISTINCT FROM p.lga
         """)
 
 def user_count():
@@ -562,17 +553,20 @@ def toggle_user(user_id):
 def dashboard():
     u=current_user(); c=db()
     if u["role"] == "LGI Officer":
-        reports=c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC LIMIT 20",(u["lga"],)).fetchall(); c.close()
-        return render_template("dashboard.html",lgi_reports=reports)
+        reports=c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC LIMIT 20",(u["lga"],)).fetchall()
+        reposting_updates=c.execute("""SELECT rn.id,rn.movement_type,rn.viewed,rm.state_code,rm.corps_member_name,rm.from_lga,rm.to_lga,rm.reposted_at
+            FROM reposting_notifications rn JOIN reposting_movements rm ON rm.id=rn.reposting_id
+            WHERE rn.lga=%s AND rm.published=1 ORDER BY rm.id DESC LIMIT 20""",(u["lga"],)).fetchall(); c.close()
+        return render_template("dashboard.html",lgi_reports=reports,reposting_updates=reposting_updates)
     total=c.execute("SELECT COUNT(*) FROM files").fetchone()["count"]; received=c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()["count"]; forwarded=c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()["count"]; submitted=c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()["count"]; acknowledged=c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()["count"]; returned=c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()["count"]
     stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,"returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,"Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
     branch_counts={b:c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s",(b,)).fetchone()["count"] for b in BRANCHES}; branches=[(b,branch_counts[b]) for b in BRANCHES]
     # ZI uses search-first access to individual file records; recent records are not exposed on the dashboard.
-    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] == "Zonal Inspector" else ""
+    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] in ("Administrator","Zonal Inspector") else ""
     search_results=[]
-    if u["role"] == "Zonal Inspector" and search_state_code:
+    if u["role"] in ("Administrator","Zonal Inspector") and search_state_code:
         search_results=c.execute("""SELECT * FROM files WHERE UPPER(COALESCE(state_code,''))=%s ORDER BY id DESC""",(search_state_code.upper(),)).fetchall()
-    recent=None if u["role"] == "Zonal Inspector" else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+    recent=None if u["role"] in ("Administrator","Zonal Inspector") else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
     inspection_count=c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections=c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count=c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
     my_inspections=0
     if u["role"] == "Supporting Staff":
@@ -1200,14 +1194,14 @@ def next_of_kin_search():
     if q:
         c=db(); like=f"%{q}%"
         rows=c.execute("""
-            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,
-                   p.lga AS lga, cm.full_name AS corps_member_name
+            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,nok.lga,
+                   cm.full_name AS corps_member_name
             FROM corps_member_next_of_kin nok
             JOIN corps_members cm ON cm.state_code=nok.state_code
             JOIN ppa_establishments p ON p.id=cm.ppa_id
-            WHERE p.lga=%s AND nok.state_code ILIKE %s
+            WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
             ORDER BY cm.full_name LIMIT 250
-        """,(assigned_lga,like)).fetchall(); c.close()
+        """,(assigned_lga,assigned_lga,like)).fetchall(); c.close()
     return render_template("next_of_kin_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
 
 
@@ -1546,6 +1540,29 @@ def new_report():
         if not subject or not body or lga not in LGAS: flash("LGA, report subject and report content are required.","error"); return redirect(url_for("new_report"))
         t=now(); rid=next_report_id(); u=current_user(); c=db(); c.execute("INSERT INTO reports (report_id,lga,report_type,ppa_employer,corps_member,subject,report_body,issued_by,issued_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(rid,lga,request.form.get("report_type","General LGA Report"),request.form.get("ppa_employer"),request.form.get("corps_member"),subject,body,u["full_name"],t,"Issued")); c.commit(); c.close(); flash(f"{rid} issued to {lga} LGI.","success"); return redirect(url_for("reports"))
     return render_template("report_form.html",lgas=LGAS)
+
+@app.route("/reposting-reports", methods=["GET","POST"])
+@login_required
+def reposting_reports():
+    u=current_user()
+    if u["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only the Administrator or Zonal Inspector may manage reposting reports.","error"); return redirect(url_for("dashboard"))
+    c=db()
+    if request.method=="POST" and request.form.get("action")=="publish":
+        ids=request.form.getlist("reposting_id")
+        if ids:
+            c.execute("UPDATE reposting_movements SET published=1,published_at=%s WHERE id=ANY(%s)",(now(),ids)); c.commit(); flash(f"{len(ids)} reposting record(s) shared with affected LGIs.","success")
+        else: flash("Select at least one reposting record to share.","error")
+        c.close(); return redirect(url_for("reposting_reports"))
+    rows=c.execute("SELECT * FROM reposting_movements ORDER BY id DESC LIMIT 200").fetchall(); c.close()
+    return render_template("reposting_reports.html",rows=rows)
+
+@app.route("/reposting-notification/<int:notification_id>/view")
+@login_required
+def view_reposting_notification(notification_id):
+    u=current_user()
+    if u["role"] != "LGI Officer": return redirect(url_for("dashboard"))
+    c=db(); c.execute("UPDATE reposting_notifications SET viewed=1,viewed_at=%s WHERE id=%s AND lga=%s",(now(),notification_id,u["lga"])); c.commit(); c.close(); return redirect(url_for("dashboard"))
 
 @app.route("/download/<name>")
 @login_required
