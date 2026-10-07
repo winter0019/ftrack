@@ -955,7 +955,7 @@
         </div>
     </div>
 
-    {% if current_user['role'] == 'Zonal Inspector' %}
+    {% if current_user['role'] in ('Administrator', 'Zonal Inspector') %}
     <div class="dashboard-section dashboard-flat-section">
         <h2>Search File</h2>
         <p class="section-description">Recent file records are hidden. Enter the Corps Member's State Code to view the file and its current location.</p>
