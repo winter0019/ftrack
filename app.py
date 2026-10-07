@@ -218,6 +218,29 @@ def init_db():
           updated_at TEXT NOT NULL
         );
 
+        -- Keep Next-of-Kin LGA synchronized with the Corps Member's current PPA/LGA.
+        -- This also covers reposting performed outside KATZIMS (for example by an
+        -- external reposting/automation agent) because the trigger runs at database level.
+        CREATE OR REPLACE FUNCTION sync_corps_member_nok_lga()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          IF NEW.ppa_id IS DISTINCT FROM OLD.ppa_id THEN
+            UPDATE corps_member_next_of_kin nok
+               SET lga = p.lga, updated_at = CURRENT_TIMESTAMP::text
+              FROM ppa_establishments p
+             WHERE nok.state_code = NEW.state_code
+               AND p.id = NEW.ppa_id;
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS trg_sync_corps_member_nok_lga ON corps_members;
+        CREATE TRIGGER trg_sync_corps_member_nok_lga
+        AFTER UPDATE OF ppa_id ON corps_members
+        FOR EACH ROW
+        EXECUTE FUNCTION sync_corps_member_nok_lga();
+
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
         ALTER TABLE files ADD COLUMN IF NOT EXISTS state_code TEXT;
@@ -225,6 +248,17 @@ def init_db():
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_by TEXT;
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_at TEXT;
         CREATE INDEX IF NOT EXISTS ix_files_state_code ON files(state_code);
+        """)
+
+        # Repair any stale Next-of-Kin LGA values from earlier repostings.
+        # The Corps Member's current PPA/LGA is the authoritative location.
+        c.execute("""
+            UPDATE corps_member_next_of_kin nok
+               SET lga = p.lga, updated_at = CURRENT_TIMESTAMP::text
+              FROM corps_members cm
+              JOIN ppa_establishments p ON p.id = cm.ppa_id
+             WHERE cm.state_code = nok.state_code
+               AND nok.lga IS DISTINCT FROM p.lga
         """)
 
 def user_count():
@@ -330,15 +364,6 @@ def normalize_state_code(value):
     """Normalize a NYSC State Code for reliable matching."""
     value=(value or "").strip().upper().replace(" ", "")
     return value
-
-
-
-def safe_attachment_filename(file_id, original_filename):
-    """Build a filesystem-safe attachment name without changing the human-readable File ID."""
-    safe_id=re.sub(r"[^A-Za-z0-9._-]+", "_", str(file_id or "")).strip("._") or "file"
-    original=os.path.basename(str(original_filename or ""))
-    original=re.sub(r"[^A-Za-z0-9._-]+", "_", original).strip("._") or "attachment"
-    return f"{safe_id}_{original}"
 
 def valid_state_code(value):
     return bool(re.fullmatch(r"[A-Z]{2}/\d{2}[A-Z]/\d{1,6}", normalize_state_code(value)))
@@ -543,11 +568,11 @@ def dashboard():
     stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,"returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,"Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
     branch_counts={b:c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s",(b,)).fetchone()["count"] for b in BRANCHES}; branches=[(b,branch_counts[b]) for b in BRANCHES]
     # ZI uses search-first access to individual file records; recent records are not exposed on the dashboard.
-    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] in ("Administrator", "Zonal Inspector") else ""
+    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] == "Zonal Inspector" else ""
     search_results=[]
-    if u["role"] in ("Administrator", "Zonal Inspector") and search_state_code:
+    if u["role"] == "Zonal Inspector" and search_state_code:
         search_results=c.execute("""SELECT * FROM files WHERE UPPER(COALESCE(state_code,''))=%s ORDER BY id DESC""",(search_state_code.upper(),)).fetchall()
-    recent=None if u["role"] in ("Administrator", "Zonal Inspector") else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+    recent=None if u["role"] == "Zonal Inspector" else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
     inspection_count=c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections=c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count=c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
     my_inspections=0
     if u["role"] == "Supporting Staff":
@@ -616,8 +641,8 @@ def lgi_send_file():
                     return redirect(url_for("lgi_send_file"))
             fid=next_file_id(c,state_code); uploaded=request.files.get("attachment")
             if uploaded and uploaded.filename:
-                attachment=safe_attachment_filename(fid, uploaded.filename)
-                uploaded.save(os.path.join(UPLOADS, attachment))
+                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
+                uploaded.save(os.path.join(UPLOADS,attachment))
             c.execute("""INSERT INTO files
                 (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                  description,attachment,status,current_location,created_at)
@@ -770,8 +795,8 @@ def receive():
             fid=next_file_id(c,state_code); attachment=None
             uploaded=request.files.get("attachment")
             if uploaded and uploaded.filename:
-                attachment=safe_attachment_filename(fid, uploaded.filename)
-                uploaded.save(os.path.join(UPLOADS, attachment))
+                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
+                uploaded.save(os.path.join(UPLOADS,attachment))
             c.execute("""INSERT INTO files
             (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
              description,attachment,status,current_location,created_at)
@@ -1175,14 +1200,14 @@ def next_of_kin_search():
     if q:
         c=db(); like=f"%{q}%"
         rows=c.execute("""
-            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,nok.lga,
-                   cm.full_name AS corps_member_name
+            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,
+                   p.lga AS lga, cm.full_name AS corps_member_name
             FROM corps_member_next_of_kin nok
             JOIN corps_members cm ON cm.state_code=nok.state_code
             JOIN ppa_establishments p ON p.id=cm.ppa_id
-            WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
+            WHERE p.lga=%s AND nok.state_code ILIKE %s
             ORDER BY cm.full_name LIMIT 250
-        """,(assigned_lga,assigned_lga,like)).fetchall(); c.close()
+        """,(assigned_lga,like)).fetchall(); c.close()
     return render_template("next_of_kin_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
 
 
