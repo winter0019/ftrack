@@ -331,6 +331,15 @@ def normalize_state_code(value):
     value=(value or "").strip().upper().replace(" ", "")
     return value
 
+
+
+def safe_attachment_filename(file_id, original_filename):
+    """Build a filesystem-safe attachment name without changing the human-readable File ID."""
+    safe_id=re.sub(r"[^A-Za-z0-9._-]+", "_", str(file_id or "")).strip("._") or "file"
+    original=os.path.basename(str(original_filename or ""))
+    original=re.sub(r"[^A-Za-z0-9._-]+", "_", original).strip("._") or "attachment"
+    return f"{safe_id}_{original}"
+
 def valid_state_code(value):
     return bool(re.fullmatch(r"[A-Z]{2}/\d{2}[A-Z]/\d{1,6}", normalize_state_code(value)))
 
@@ -534,11 +543,11 @@ def dashboard():
     stats={"total":total,"received":received,"forwarded":forwarded,"submitted":submitted,"ack":acknowledged,"returned":returned,"Total":total,"Received":received,"Forwarded":forwarded,"Submitted":submitted,"Acknowledged":acknowledged,"Returned":returned}
     branch_counts={b:c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s",(b,)).fetchone()["count"] for b in BRANCHES}; branches=[(b,branch_counts[b]) for b in BRANCHES]
     # ZI uses search-first access to individual file records; recent records are not exposed on the dashboard.
-    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] == "Zonal Inspector" else ""
+    search_state_code=normalize_state_code(request.args.get("state_code", "")) if u["role"] in ("Administrator", "Zonal Inspector") else ""
     search_results=[]
-    if u["role"] == "Zonal Inspector" and search_state_code:
+    if u["role"] in ("Administrator", "Zonal Inspector") and search_state_code:
         search_results=c.execute("""SELECT * FROM files WHERE UPPER(COALESCE(state_code,''))=%s ORDER BY id DESC""",(search_state_code.upper(),)).fetchall()
-    recent=None if u["role"] == "Zonal Inspector" else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+    recent=None if u["role"] in ("Administrator", "Zonal Inspector") else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
     inspection_count=c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections=c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count=c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
     my_inspections=0
     if u["role"] == "Supporting Staff":
@@ -607,8 +616,8 @@ def lgi_send_file():
                     return redirect(url_for("lgi_send_file"))
             fid=next_file_id(c,state_code); uploaded=request.files.get("attachment")
             if uploaded and uploaded.filename:
-                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
-                uploaded.save(os.path.join(UPLOADS,attachment))
+                attachment=safe_attachment_filename(fid, uploaded.filename)
+                uploaded.save(os.path.join(UPLOADS, attachment))
             c.execute("""INSERT INTO files
                 (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                  description,attachment,status,current_location,created_at)
@@ -761,8 +770,8 @@ def receive():
             fid=next_file_id(c,state_code); attachment=None
             uploaded=request.files.get("attachment")
             if uploaded and uploaded.filename:
-                attachment=f"{fid}_{os.path.basename(uploaded.filename)}"
-                uploaded.save(os.path.join(UPLOADS,attachment))
+                attachment=safe_attachment_filename(fid, uploaded.filename)
+                uploaded.save(os.path.join(UPLOADS, attachment))
             c.execute("""INSERT INTO files
             (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
              description,attachment,status,current_location,created_at)
