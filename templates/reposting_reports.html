@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Corps Member Reposting | KATZIMS{% endblock %}
+{% block content %}
+<div class="container" style="max-width:1200px;margin:40px auto;padding:0 20px;">
+  <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+    <div>
+      <span style="font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.7;">KATZIMS</span>
+      <h1 style="margin:8px 0;">Corps Member Reposting Report</h1>
+      <p style="opacity:.72;">Review reposting movements detected from Corps Member assignment changes and share selected updates with affected LGIs.</p>
+    </div>
+    <a class="cta" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </div>
+  <form method="post" style="margin-top:25px;">
+    <div style="overflow:auto;border:1px solid #e1e9e6;border-radius:16px;background:#fff;">
+      <table style="width:100%;border-collapse:collapse;min-width:900px;">
+        <thead><tr><th style="padding:14px;text-align:left;">Share</th><th style="padding:14px;text-align:left;">State Code</th><th style="padding:14px;text-align:left;">Corps Member</th><th style="padding:14px;text-align:left;">Reposted Out</th><th style="padding:14px;text-align:left;">Reposted In</th><th style="padding:14px;text-align:left;">Date</th><th style="padding:14px;text-align:left;">Status</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          <tr style="border-top:1px solid #edf1ef;">
+            <td style="padding:14px;"><input type="checkbox" name="reposting_id" value="{{ r['id'] }}" {% if r['published'] %}disabled{% endif %}></td>
+            <td style="padding:14px;"><strong>{{ r['state_code'] }}</strong></td>
+            <td style="padding:14px;">{{ r['corps_member_name'] }}</td>
+            <td style="padding:14px;">{{ r['from_lga'] }}</td>
+            <td style="padding:14px;">{{ r['to_lga'] }}</td>
+            <td style="padding:14px;">{{ r['reposted_at'] }}</td>
+            <td style="padding:14px;">{% if r['published'] %}<span class="status-badge">Shared with LGIs</span>{% else %}<span>Not shared</span>{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" style="padding:25px;">No reposting movements have been detected yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button class="cta" type="submit" name="action" value="publish">Share Selected with LGIs</button>
+      <span style="opacity:.68;">LGIs will see only movements affecting their assigned LGA.</span>
+    </div>
+  </form>
+</div>
+{% endblock %}
