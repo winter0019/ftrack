@@ -24,31 +24,39 @@
 /* Panel & Table Layout */
 .table-panel { background: #fff; border: 1px solid #e0eae5; border-radius: 16px; padding: 10px 0 0; box-shadow: 0 4px 16px #173d2c06; overflow: hidden; }
 .table-container { width: 100%; overflow-x: auto; }
-.modern-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 900px; }
+.modern-table { width: 100%; min-width: 1180px; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .modern-table th { padding: 14px 16px; text-align: left; background: #f4f8f6; color: #5e7169; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #e0eae5; white-space: nowrap; }
 .modern-table td { padding: 14px 16px; border-bottom: 1px solid #edf2ef; vertical-align: middle; color: #213c34; word-wrap: break-word; overflow-wrap: break-word; }
 .modern-table tbody tr:last-child td { border-bottom: 0; }
 .modern-table tbody tr:hover { background: #fbfdfc; }
 
 /* Strict Column Width Proportions */
-.modern-table th:nth-child(1), .modern-table td:nth-child(1) { width: 16%; } /* File ID */
-.modern-table th:nth-child(2), .modern-table td:nth-child(2) { width: 32%; } /* Document */
-.modern-table th:nth-child(3), .modern-table td:nth-child(3) { width: 16%; } /* Source */
-.modern-table th:nth-child(4), .modern-table td:nth-child(4) { width: 16%; } /* Location */
-.modern-table th:nth-child(5), .modern-table td:nth-child(5) { width: 10%; } /* Status */
-.modern-table th:nth-child(6), .modern-table td:nth-child(6) { width: 10%; } /* Received */
+.modern-table th:nth-child(1), .modern-table td:nth-child(1) { width: 22%; } /* File ID */
+.modern-table th:nth-child(2), .modern-table td:nth-child(2) { width: 27%; } /* Document */
+.modern-table th:nth-child(3), .modern-table td:nth-child(3) { width: 15%; } /* Source */
+.modern-table th:nth-child(4), .modern-table td:nth-child(4) { width: 15%; } /* Location */
+.modern-table th:nth-child(5), .modern-table td:nth-child(5) { width: 9%; } /* Status */
+.modern-table th:nth-child(6), .modern-table td:nth-child(6) { width: 12%; } /* Received */
 
-.file-link { color: #087b53; font-weight: 750; text-decoration: none; white-space: nowrap; }
+.file-link { display:block; color:#087b53; font-weight:750; text-decoration:none; white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.35; }
 .file-link:hover { text-decoration: underline; }
 
-.doc-title { display: block; color: #263e35; font-weight: 750; line-height: 1.3; }
-.doc-sub { display: block; color: #7a8983; font-size: 11px; margin-top: 4px; word-break: break-all; }
+.doc-title { display:block; color:#263e35; font-weight:750; line-height:1.3; overflow-wrap:anywhere; }
+.doc-sub { display:block; color:#7a8983; font-size:11px; margin-top:4px; overflow-wrap:anywhere; word-break:break-word; line-height:1.3; }
 
 .status-badge { display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; white-space: nowrap; background: #e6f5ed; color: #147347; text-transform: uppercase; }
 .status-badge.submitted { background: #fff4dc; color: #946514; }
 .status-badge.returned { background: #fff0ee; color: #a13c32; }
 .status-badge.forwarded { background: #eaf3ef; color: #376b55; }
 .status-badge.received { background: #e6f5ed; color: #147347; }
+
+.source-name { display:block; font-weight:600; line-height:1.35; overflow-wrap:anywhere; }
+.received-date { display:block; font-size:11.5px; color:#5a7369; line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+@media (max-width:760px) {
+    .filter-card input, .filter-card select, .search-submit-btn { flex:1 1 100%; width:100%; }
+    .modern-table { min-width:1080px; }
+    .register-btn { width:100%; }
+}
 </style>
 
 <div class="register-wrap">
@@ -104,12 +112,12 @@
                             <span class="doc-sub">{{r['reference_no'] or ''}}</span>
                         </td>
                         <td>
-                            {{r['lga']}}
+                            <span class="source-name">{{r['lga']}}</span>
                             {% if r['lgi_name'] %}<span class="doc-sub">{{r['lgi_name']}}</span>{% endif %}
                         </td>
-                        <td>{{r['current_location']}}</td>
+                        <td><span class="source-name">{{r['current_location']}}</span></td>
                         <td><span class="status-badge {{r['status']|lower}}">{{r['status']}}</span></td>
-                        <td style="font-size: 11.5px; color: #5a7369; white-space: nowrap;">{{r['received_at']}}</td>
+                        <td><span class="received-date">{{r['received_at']}}</span></td>
                     </tr>
                     {% else %}
                     <tr>
