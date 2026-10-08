@@ -501,6 +501,18 @@ def setup():
             return redirect(url_for("login"))
     return render_template("setup.html")
 
+def _validate_user_assignment(role, lga):
+    role = (role or "").strip()
+    lga = (lga or "").strip()
+    if role not in ROLES:
+        return False, "Please select a valid role."
+    if role == "LGI Officer" and lga not in LGAS:
+        return False, "An LGI Officer must be assigned to one of the seven approved LGAs."
+    if lga and lga not in LGAS:
+        return False, "Please select a valid LGA from the approved list."
+    return True, ""
+
+
 @app.route("/users",methods=["GET","POST"])
 @admin_required
 def users():
@@ -511,10 +523,13 @@ def users():
         role=request.form.get("role","").strip()
         office=request.form.get("office","").strip()
         lga=request.form.get("lga","").strip()
+        valid_assignment, assignment_error = _validate_user_assignment(role, lga)
         if not full_name or not username or not password or role not in ROLES:
             flash("Full name, username, password and valid role are required.","error")
         elif len(password)<8:
             flash("Password must be at least 8 characters.","error")
+        elif not valid_assignment:
+            flash(assignment_error,"error")
         else:
             c=db()
             try:
@@ -534,6 +549,49 @@ def users():
     rows=c.execute("SELECT * FROM users ORDER BY full_name").fetchall()
     c.close()
     return render_template("users.html",users=rows,roles=ROLES,lgas=LGAS)
+
+@app.route("/users/<int:user_id>/edit",methods=["GET","POST"])
+@admin_required
+def edit_user(user_id):
+    c=db()
+    user=c.execute("SELECT * FROM users WHERE id=%s",(user_id,)).fetchone()
+    if not user:
+        c.close()
+        flash("Official account not found.","error")
+        return redirect(url_for("users"))
+    if request.method=="POST":
+        full_name=request.form.get("full_name","").strip()
+        username=request.form.get("username","").strip()
+        password=request.form.get("password","")
+        role=request.form.get("role","").strip()
+        office=request.form.get("office","").strip()
+        lga=request.form.get("lga","").strip()
+        valid_assignment, assignment_error = _validate_user_assignment(role, lga)
+        if not full_name or not username or role not in ROLES:
+            flash("Full name, username and valid role are required.","error")
+        elif password and len(password)<8:
+            flash("If changing the password, it must be at least 8 characters.","error")
+        elif not valid_assignment:
+            flash(assignment_error,"error")
+        else:
+            try:
+                if password:
+                    c.execute("""UPDATE users SET full_name=%s, username=%s, password_hash=%s,
+                        role=%s, office=%s, lga=%s WHERE id=%s""",
+                        (full_name,username,generate_password_hash(password),role,office,lga,user_id))
+                else:
+                    c.execute("""UPDATE users SET full_name=%s, username=%s, role=%s,
+                        office=%s, lga=%s WHERE id=%s""",
+                        (full_name,username,role,office,lga,user_id))
+                c.commit()
+                flash(f"{full_name} account updated successfully.","success")
+                c.close()
+                return redirect(url_for("users"))
+            except UniqueViolation:
+                c.rollback()
+                flash("That username already exists.","error")
+    c.close()
+    return render_template("user_edit.html",user=user,roles=ROLES,lgas=LGAS)
 
 @app.route("/users/<int:user_id>/toggle",methods=["POST"])
 @admin_required
