@@ -866,7 +866,22 @@
                 <span>Receive reports issued by the Zonal Inspector for your LGA.</span>
                 <span class="arrow">Open →</span>
             </a>
+            <a class="dashboard-card" href="#reposting-updates">
+                <b>Reposting Updates</b>
+                <span>View Corps Members reposted into or out of your LGA.</span>
+                <span class="arrow">View →</span>
+            </a>
         </div>
+    </div>
+
+    <div class="dashboard-section" id="reposting-updates">
+        <h2>Reposting Updates</h2>
+        <p class="section-description">Published reposting movements affecting {{ current_user['lga'] }}.</p>
+        {% if reposting_updates|default([]) %}
+        <div class="records-wrap"><table class="records-table"><thead><tr><th>Movement</th><th>State Code</th><th>Corps Member</th><th>From</th><th>To</th><th>Date</th></tr></thead><tbody>
+        {% for r in reposting_updates %}<tr><td><span class="status-badge">{{ r['movement_type'] }}</span></td><td>{{ r['state_code'] }}</td><td>{{ r['corps_member_name'] }}</td><td>{{ r['from_lga'] }}</td><td>{{ r['to_lga'] }}</td><td>{{ r['reposted_at'] }}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% else %}<div class="dashboard-section-box"><p class="section-description" style="margin:0;">No reposting updates have been shared with your LGA yet.</p></div>{% endif %}
     </div>
 
     <div class="dashboard-section">
@@ -944,6 +959,11 @@
         <h2>Inspection &amp; PPA Monitoring</h2>
         <p class="section-description">Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.</p>
         <a class="cta dashboard-cta" href="{{ url_for('inspections') }}">Open Inspection →</a>
+    </div>
+    <div class="dashboard-section dashboard-flat-section">
+        <h2>Corps Member Reposting</h2>
+        <p class="section-description">Review detected repostings and share selected movements with the affected LGIs.</p>
+        <a class="cta dashboard-cta" href="{{ url_for('reposting_reports') }}">Open Reposting Report →</a>
     </div>
 
     <div class="dashboard-section dashboard-flat-section">
