@@ -730,7 +730,7 @@ def lgi_send_file():
 @app.route("/lgi-corps-search")
 @login_required
 def lgi_corps_search():
-    """LGI directory restricted server-side to the officer's assigned LGA."""
+    """Allow LGI Officers to search active Corps Members across all LGAs."""
     u=current_user()
     if u["role"] != "LGI Officer":
         flash("The corps member directory is available to LGI Officers only.","error")
@@ -749,11 +749,11 @@ def lgi_corps_search():
                    cm.phone,cm.status,p.name AS ppa_name,p.lga
             FROM corps_members cm
             JOIN ppa_establishments p ON p.id=cm.ppa_id
-            WHERE p.lga=%s AND COALESCE(cm.status,'Active') ILIKE 'Active'
+            WHERE COALESCE(cm.status,'Active') ILIKE 'Active'
               AND (cm.state_code ILIKE %s OR cm.full_name ILIKE %s OR COALESCE(cm.phone,'') ILIKE %s
                    OR p.name ILIKE %s OR COALESCE(cm.discipline,'') ILIKE %s)
             ORDER BY cm.full_name LIMIT 250
-        """,(assigned_lga,like,like,like,like,like)).fetchall()
+        """,(like,like,like,like,like)).fetchall()
         c.close()
     return render_template("lgi_corps_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
 
@@ -761,7 +761,7 @@ def lgi_corps_search():
 @app.route("/lgi-corps/<path:state_code>")
 @login_required
 def lgi_corps_detail(state_code):
-    """Show an individual corps record only when it belongs to the LGI's LGA."""
+    """Show a Corps Member record to an LGI Officer regardless of assigned LGA."""
     u=current_user()
     if u["role"] != "LGI Officer":
         flash("The corps member directory is available to LGI Officers only.","error")
@@ -775,11 +775,11 @@ def lgi_corps_detail(state_code):
         SELECT cm.state_code,cm.full_name,cm.gender,cm.discipline,cm.batch,cm.stream,
                cm.phone,cm.status,cm.created_at,cm.updated_at,p.name AS ppa_name,p.lga
         FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
-        WHERE cm.state_code=%s AND p.lga=%s
-    """,(state_code,assigned_lga)).fetchone()
+        WHERE cm.state_code=%s
+    """,(state_code,)).fetchone()
     c.close()
     if not row:
-        return "Corps member not found in your assigned LGA.",404
+        return "Corps member not found.",404
     return render_template("lgi_corps_detail.html",r=row,assigned_lga=assigned_lga)
 
 
