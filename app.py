@@ -750,10 +750,9 @@ def lgi_corps_search():
             FROM corps_members cm
             JOIN ppa_establishments p ON p.id=cm.ppa_id
             WHERE COALESCE(cm.status,'Active') ILIKE 'Active'
-              AND (cm.state_code ILIKE %s OR cm.full_name ILIKE %s OR COALESCE(cm.phone,'') ILIKE %s
-                   OR p.name ILIKE %s OR COALESCE(cm.discipline,'') ILIKE %s)
+              AND cm.state_code ILIKE %s
             ORDER BY cm.full_name LIMIT 250
-        """,(like,like,like,like,like)).fetchall()
+        """,(like,)).fetchall()
         c.close()
     return render_template("lgi_corps_search.html",assigned_lga=assigned_lga,q=q,rows=rows)
 
