@@ -9,13 +9,18 @@ from psycopg.errors import UniqueViolation
 from datetime import datetime
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import uuid
 
 BASE=os.path.dirname(os.path.abspath(__file__))
 UPLOADS=os.path.join(BASE,"uploads")
 os.makedirs(UPLOADS,exist_ok=True)
+ALLOWED_INSPECTION_EVIDENCE={"pdf","png","jpg","jpeg","doc","docx","xls","xlsx","csv"}
+MAX_INSPECTION_EVIDENCE_BYTES=12 * 1024 * 1024
 
 app=Flask(__name__)
 app.secret_key=os.environ.get("FILETRACK_SECRET","change-this-secret-key")
+app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024
 
 LGAS=["Katsina A","Katsina B","Batagarawa","Kaita","Jibia","Rimi","Charanchi"]
 BRANCHES=["CIM","CW&HS","CDS"]
@@ -154,6 +159,59 @@ def init_db():
           issued_by TEXT NOT NULL,
           issued_at TEXT NOT NULL,
           status TEXT DEFAULT 'Issued'
+        );
+
+        CREATE TABLE IF NOT EXISTS inspection_report_submissions(
+          id BIGSERIAL PRIMARY KEY,
+          report_id TEXT UNIQUE NOT NULL,
+          lga TEXT NOT NULL,
+          inspection_date TEXT NOT NULL,
+          ppa_employer TEXT,
+          corps_member TEXT,
+          subject TEXT NOT NULL,
+          findings TEXT NOT NULL,
+          recommendations TEXT,
+          inspected_by_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          inspected_by_name TEXT NOT NULL,
+          submitted_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Submitted',
+          revision INTEGER NOT NULL DEFAULT 1,
+          review_comment TEXT,
+          reviewed_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_by_name TEXT,
+          reviewed_at TEXT,
+          shared_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          shared_by_name TEXT,
+          shared_at TEXT,
+          acknowledged_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          acknowledged_by_name TEXT,
+          acknowledged_at TEXT,
+          corrective_action TEXT,
+          corrective_action_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          corrective_action_by_name TEXT,
+          corrective_action_updated_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ix_inspection_reports_lga_status ON inspection_report_submissions(lga,status,id DESC);
+        CREATE INDEX IF NOT EXISTS ix_inspection_reports_staff ON inspection_report_submissions(inspected_by_id,id DESC);
+
+        CREATE TABLE IF NOT EXISTS inspection_report_evidence(
+          id BIGSERIAL PRIMARY KEY,
+          submission_id BIGINT NOT NULL REFERENCES inspection_report_submissions(id) ON DELETE CASCADE,
+          stored_name TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          uploaded_by_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          uploaded_by_name TEXT NOT NULL,
+          uploaded_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS inspection_report_audit(
+          id BIGSERIAL PRIMARY KEY,
+          submission_id BIGINT NOT NULL REFERENCES inspection_report_submissions(id) ON DELETE CASCADE,
+          action TEXT NOT NULL,
+          actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          actor_name TEXT NOT NULL,
+          actor_role TEXT NOT NULL,
+          details TEXT,
+          created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS ppa_establishments(
@@ -1579,6 +1637,265 @@ def inspection_record():
     c.execute("""INSERT INTO inspections(inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status)
                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",(iid,member["ppa_id"] and c.execute("SELECT lga FROM ppa_establishments WHERE id=%s",(ppa_id,)).fetchone()["lga"],member["ppa_id"] and c.execute("SELECT name FROM ppa_establishments WHERE id=%s",(ppa_id,)).fetchone()["name"],member["full_name"],"PPA Attendance Inspection",findings,remarks,u["full_name"],t,"Completed"))
     c.commit(); c.close(); flash(f"{iid} recorded successfully. Query issued: {'YES' if query else 'NO'}.","success"); return redirect(url_for("inspection_ppa",ppa_id=ppa_id))
+
+def _next_inspection_report_id(c):
+    n=c.execute("SELECT COUNT(*) AS count FROM inspection_report_submissions").fetchone()["count"]
+    return f"KZO-IR-{datetime.now().year}-{n+1:04d}"
+
+
+def _inspection_report_audit(c, submission_id, action, user, details=""):
+    c.execute("""INSERT INTO inspection_report_audit
+        (submission_id,action,actor_id,actor_name,actor_role,details,created_at)
+        VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+        (submission_id,action,user["id"],user["full_name"],user["role"],details,now()))
+
+
+def _save_inspection_evidence(c, submission_id, user):
+    files=request.files.getlist("evidence")
+    saved=[]
+    for upload in files:
+        original=(upload.filename or "").strip()
+        if not original:
+            continue
+        safe=secure_filename(original)
+        ext=safe.rsplit(".",1)[-1].lower() if "." in safe else ""
+        if ext not in ALLOWED_INSPECTION_EVIDENCE:
+            raise ValueError(f"Unsupported evidence file type: {original}")
+        upload.stream.seek(0,os.SEEK_END); size=upload.stream.tell(); upload.stream.seek(0)
+        if size > MAX_INSPECTION_EVIDENCE_BYTES:
+            raise ValueError(f"Evidence file exceeds 12 MB: {original}")
+        stored=f"inspection_{uuid.uuid4().hex}_{safe or 'evidence'}"
+        upload.save(os.path.join(UPLOADS,stored))
+        c.execute("""INSERT INTO inspection_report_evidence
+            (submission_id,stored_name,original_name,uploaded_by_id,uploaded_by_name,uploaded_at)
+            VALUES(%s,%s,%s,%s,%s,%s)""",
+            (submission_id,stored,original,user["id"],user["full_name"],now()))
+        saved.append(stored)
+    return saved
+
+
+def _report_visible_to_user(c, submission_id, user):
+    if user["role"] in ("Administrator","Zonal Inspector"):
+        return c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s",(submission_id,)).fetchone()
+    if user["role"] == "Supporting Staff":
+        return c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND inspected_by_id=%s",(submission_id,user["id"])).fetchone()
+    if user["role"] == "LGI Officer":
+        return c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND lga=%s AND status IN ('Shared','Acknowledged')",(submission_id,user["lga"])).fetchone()
+    return None
+
+
+@app.route("/inspection-reports")
+@login_required
+def inspection_reports_home():
+    user=current_user()
+    if user["role"] in ("Administrator","Zonal Inspector"):
+        return redirect(url_for("inspection_review_inbox"))
+    if user["role"] == "Supporting Staff":
+        c=db(); rows=c.execute("SELECT * FROM inspection_report_submissions WHERE inspected_by_id=%s ORDER BY id DESC LIMIT 100",(user["id"],)).fetchall(); c.close()
+        return render_template("inspection_report_staff.html",rows=rows,mode="staff_list")
+    if user["role"] == "LGI Officer":
+        return redirect(url_for("inspection_reports_lgi"))
+    flash("Inspection report access is not available to this role.","error")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/inspection-reports/new",methods=["GET","POST"])
+@login_required
+def inspection_report_new():
+    user=current_user()
+    if user["role"] != "Supporting Staff":
+        flash("Only Supporting Staff can submit field inspection reports.","error")
+        return redirect(url_for("inspection_reports_home"))
+    if request.method == "POST":
+        lga=request.form.get("lga","").strip()
+        inspection_date=request.form.get("inspection_date","").strip()
+        subject=request.form.get("subject","").strip()
+        findings=request.form.get("findings","").strip()
+        ppa=request.form.get("ppa_employer","").strip()
+        member=request.form.get("corps_member","").strip()
+        recommendations=request.form.get("recommendations","").strip()
+        if lga not in LGAS or not inspection_date or not subject or not findings:
+            flash("Select a valid LGA and provide the inspection date, subject and findings.","error")
+            return render_template("inspection_report_staff.html",mode="new",lgas=LGAS,form=request.form)
+        c=db()
+        try:
+            rid=_next_inspection_report_id(c); t=now()
+            row=c.execute("""INSERT INTO inspection_report_submissions
+                (report_id,lga,inspection_date,ppa_employer,corps_member,subject,findings,recommendations,inspected_by_id,inspected_by_name,submitted_at,status,revision)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Submitted',1) RETURNING id""",
+                (rid,lga,inspection_date,ppa or None,member or None,subject,findings,recommendations or None,user["id"],user["full_name"],t)).fetchone()
+            _save_inspection_evidence(c,row["id"],user)
+            _inspection_report_audit(c,row["id"],"Submitted",user,"Submitted to the Zonal Inspector.")
+            c.commit()
+        except (ValueError,Exception) as exc:
+            c.rollback(); c.close()
+            if isinstance(exc,ValueError):
+                flash(str(exc),"error")
+            else:
+                app.logger.exception("Could not submit inspection report")
+                flash("The report could not be submitted. Please try again or contact the administrator.","error")
+            return render_template("inspection_report_staff.html",mode="new",lgas=LGAS,form=request.form)
+        c.close(); flash(f"Inspection report {rid} submitted to the ZI.","success")
+        return redirect(url_for("inspection_reports_home"))
+    return render_template("inspection_report_staff.html",mode="new",lgas=LGAS,form={})
+
+
+@app.route("/inspection-reports/<int:submission_id>/resubmit",methods=["GET","POST"])
+@login_required
+def inspection_report_resubmit(submission_id):
+    user=current_user()
+    if user["role"] != "Supporting Staff":
+        flash("Only the submitting Supporting Staff officer can revise a returned report.","error")
+        return redirect(url_for("inspection_reports_home"))
+    c=db(); row=c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND inspected_by_id=%s",(submission_id,user["id"])).fetchone()
+    if not row:
+        c.close(); return "Inspection report not found",404
+    if row["status"] != "Returned":
+        c.close(); flash("Only returned reports can be revised and resubmitted.","error"); return redirect(url_for("inspection_reports_home"))
+    if request.method == "POST":
+        lga=request.form.get("lga","").strip(); date=request.form.get("inspection_date","").strip(); subject=request.form.get("subject","").strip(); findings=request.form.get("findings","").strip()
+        if lga not in LGAS or not date or not subject or not findings:
+            c.close(); flash("LGA, inspection date, subject and findings are required.","error")
+            return render_template("inspection_report_staff.html",mode="edit",submission=row,lgas=LGAS,form=request.form)
+        try:
+            t=now()
+            c.execute("""UPDATE inspection_report_submissions SET lga=%s,inspection_date=%s,ppa_employer=%s,corps_member=%s,subject=%s,findings=%s,recommendations=%s,submitted_at=%s,status='Submitted',revision=revision+1,review_comment=NULL,reviewed_by_id=NULL,reviewed_by_name=NULL,reviewed_at=NULL WHERE id=%s""",
+                (lga,date,request.form.get("ppa_employer","").strip() or None,request.form.get("corps_member","").strip() or None,subject,findings,request.form.get("recommendations","").strip() or None,t,submission_id))
+            _save_inspection_evidence(c,submission_id,user)
+            _inspection_report_audit(c,submission_id,"Resubmitted",user,"Corrected report resubmitted to the Zonal Inspector.")
+            c.commit()
+        except Exception as exc:
+            c.rollback(); c.close(); app.logger.exception("Could not resubmit inspection report")
+            flash(str(exc) if isinstance(exc,ValueError) else "The report could not be resubmitted.","error")
+            return redirect(url_for("inspection_report_resubmit",submission_id=submission_id))
+        c.close(); flash("Corrected inspection report resubmitted to the ZI.","success")
+        return redirect(url_for("inspection_reports_home"))
+    c.close(); return render_template("inspection_report_staff.html",mode="edit",submission=row,lgas=LGAS,form=row)
+
+
+@app.route("/inspection-reports/<int:submission_id>")
+@login_required
+def inspection_report_view(submission_id):
+    user=current_user(); c=db()
+    submission=_report_visible_to_user(c,submission_id,user)
+    if not submission:
+        c.close(); return "Inspection report not found",404
+    evidence=c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall()
+    history=c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall(); c.close()
+    return render_template("inspection_review_detail.html",submission=submission,evidence=evidence,history=history,can_decide=False,lgas=LGAS,readonly=True)
+
+
+@app.route("/inspection-reports/review")
+@login_required
+def inspection_review_inbox():
+    user=current_user()
+    if user["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can review and distribute inspection reports.","error")
+        return redirect(url_for("dashboard"))
+    lga=request.args.get("lga","").strip(); status=request.args.get("status","").strip()
+    c=db(); sql="""SELECT s.*, (SELECT COUNT(*) FROM inspection_report_evidence e WHERE e.submission_id=s.id) AS evidence_count
+        FROM inspection_report_submissions s WHERE 1=1"""; args=[]
+    if lga in LGAS: sql+=" AND s.lga=%s"; args.append(lga)
+    if status in ("Submitted","Returned","Shared","Acknowledged"): sql+=" AND s.status=%s"; args.append(status)
+    sql+=" ORDER BY s.id DESC LIMIT 300"; rows=c.execute(sql,args).fetchall(); c.close()
+    return render_template("inspection_review_inbox.html",rows=rows,lgas=LGAS,selected_lga=lga,status_filter=status)
+
+
+@app.route("/inspection-reports/review/<int:submission_id>")
+@login_required
+def inspection_review_detail(submission_id):
+    user=current_user()
+    if user["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can review inspection reports.","error"); return redirect(url_for("dashboard"))
+    c=db(); submission=c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s",(submission_id,)).fetchone()
+    if not submission:
+        c.close(); return "Inspection report not found",404
+    evidence=c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall()
+    history=c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall(); c.close()
+    return render_template("inspection_review_detail.html",submission=submission,evidence=evidence,history=history,can_decide=submission["status"] in ("Submitted","Returned"),lgas=LGAS)
+
+
+@app.route("/inspection-reports/review/<int:submission_id>/decision",methods=["POST"])
+@login_required
+def inspection_review_decision(submission_id):
+    user=current_user()
+    if user["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can make review decisions.","error"); return redirect(url_for("dashboard"))
+    decision=request.form.get("decision","").strip(); comment=request.form.get("review_comment","").strip()
+    if decision not in ("Returned","Shared"):
+        flash("Choose either Return for Correction or Share with LGI.","error"); return redirect(url_for("inspection_review_detail",submission_id=submission_id))
+    if decision=="Returned" and not comment:
+        flash("A return reason is required so Supporting Staff know what to correct.","error"); return redirect(url_for("inspection_review_detail",submission_id=submission_id))
+    c=db(); row=c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s",(submission_id,)).fetchone()
+    if not row:
+        c.close(); return "Inspection report not found",404
+    if row["status"] not in ("Submitted","Returned"):
+        c.close(); flash("This report has already been shared or acknowledged and cannot be re-reviewed through this action.","error"); return redirect(url_for("inspection_review_detail",submission_id=submission_id))
+    t=now()
+    if decision=="Returned":
+        c.execute("UPDATE inspection_report_submissions SET status='Returned',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s WHERE id=%s",(comment,user["id"],user["full_name"],t,submission_id))
+        _inspection_report_audit(c,submission_id,"Returned for correction",user,comment)
+        flash("Report returned to Supporting Staff for correction.","success")
+    else:
+        c.execute("UPDATE inspection_report_submissions SET status='Shared',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s,shared_by_id=%s,shared_by_name=%s,shared_at=%s WHERE id=%s",(comment or None,user["id"],user["full_name"],t,user["id"],user["full_name"],t,submission_id))
+        _inspection_report_audit(c,submission_id,"Shared with LGI",user,f"Shared with {row['lga']} LGI. Corrective action remains pending until updated by the LGI.")
+        flash(f"Report shared with the {row['lga']} LGI. Corrective action is not marked complete.","success")
+    c.commit(); c.close(); return redirect(url_for("inspection_review_detail",submission_id=submission_id))
+
+
+@app.route("/inspection-reports/lgi")
+@login_required
+def inspection_reports_lgi():
+    user=current_user()
+    if user["role"] != "LGI Officer" or user.get("lga") not in LGAS:
+        flash("This page is only available to an LGI Officer with an assigned Katsina Zone LGA.","error"); return redirect(url_for("dashboard"))
+    c=db(); rows=c.execute("SELECT * FROM inspection_report_submissions WHERE lga=%s AND status IN ('Shared','Acknowledged') ORDER BY id DESC LIMIT 300",(user["lga"],)).fetchall(); c.close()
+    return render_template("inspection_reports_lgi.html",rows=rows)
+
+
+@app.route("/inspection-reports/lgi/<int:submission_id>",methods=["GET","POST"])
+@login_required
+def inspection_report_lgi_detail(submission_id):
+    user=current_user()
+    if user["role"] != "LGI Officer" or user.get("lga") not in LGAS:
+        flash("This page is only available to an LGI Officer with an assigned Katsina Zone LGA.","error"); return redirect(url_for("dashboard"))
+    c=db(); row=c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND lga=%s AND status IN ('Shared','Acknowledged')",(submission_id,user["lga"])).fetchone()
+    if not row:
+        c.close(); return "Inspection report not found",404
+    if request.method=="POST":
+        action=request.form.get("action",""); t=now()
+        if action=="acknowledge":
+            if row["status"]=="Shared":
+                c.execute("UPDATE inspection_report_submissions SET status='Acknowledged',acknowledged_by_id=%s,acknowledged_by_name=%s,acknowledged_at=%s WHERE id=%s AND lga=%s",(user["id"],user["full_name"],t,submission_id,user["lga"]))
+                _inspection_report_audit(c,submission_id,"Acknowledged by LGI",user,"LGI acknowledged receipt; this does not mean corrective action is complete.")
+                c.commit(); flash("Receipt acknowledged. Corrective action remains a separate step.","success")
+        elif action=="action_update":
+            action_text=request.form.get("corrective_action","").strip()
+            if not action_text:
+                c.close(); flash("Enter the action taken or current follow-up status.","error"); return redirect(url_for("inspection_report_lgi_detail",submission_id=submission_id))
+            c.execute("UPDATE inspection_report_submissions SET corrective_action=%s,corrective_action_by_id=%s,corrective_action_by_name=%s,corrective_action_updated_at=%s WHERE id=%s AND lga=%s",(action_text,user["id"],user["full_name"],t,submission_id,user["lga"]))
+            _inspection_report_audit(c,submission_id,"Corrective action updated by LGI",user,action_text)
+            c.commit(); flash("Corrective action update saved.","success")
+        c.close(); return redirect(url_for("inspection_report_lgi_detail",submission_id=submission_id))
+    evidence=c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall()
+    history=c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id",(submission_id,)).fetchall(); c.close()
+    return render_template("inspection_report_lgi_detail.html",submission=row,evidence=evidence,history=history)
+
+
+@app.route("/inspection-reports/evidence/<int:evidence_id>")
+@login_required
+def inspection_report_evidence_download(evidence_id):
+    user=current_user(); c=db()
+    evidence=c.execute("SELECT e.*,s.id AS submission_id,s.lga,s.status,s.inspected_by_id FROM inspection_report_evidence e JOIN inspection_report_submissions s ON s.id=e.submission_id WHERE e.id=%s",(evidence_id,)).fetchone()
+    if not evidence:
+        c.close(); return "Evidence not found",404
+    allowed=(user["role"] in ("Administrator","Zonal Inspector") or
+        (user["role"]=="Supporting Staff" and evidence["inspected_by_id"]==user["id"]) or
+        (user["role"]=="LGI Officer" and user.get("lga")==evidence["lga"] and evidence["status"] in ("Shared","Acknowledged")))
+    c.close()
+    if not allowed: return "You are not permitted to access this evidence",403
+    return send_from_directory(UPLOADS,evidence["stored_name"],as_attachment=True,download_name=evidence["original_name"])
+
 
 @app.route("/reports")
 @login_required
