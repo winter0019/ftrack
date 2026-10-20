@@ -495,6 +495,13 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
     <a href="{{ url_for('inspections') }}">Inspection</a>
+    {% if current_user and current_user['role'] in ('Supporting Staff',) %}
+      <a href="{{ url_for('inspection_reports_home') }}">My Inspection Reports</a>
+    {% elif current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('inspection_review_inbox') }}">Inspection Review</a>
+    {% elif current_user and current_user['role'] == 'LGI Officer' %}
+      <a href="{{ url_for('inspection_reports_lgi') }}">LGA Inspection Reports</a>
+    {% endif %}
 
     {% if current_user and current_user['role'] in ('LGI Officer', 'Administrator', 'Zonal Inspector') %}
       <a href="{{ url_for('directory') }}">Directory</a>

@@ -848,7 +848,7 @@
             <p class="section-description">
                 {{ (lgi_reports|default([]))|length }} inspection report{{ '' if (lgi_reports|default([]))|length == 1 else 's' }} available for your LGA.
             </p>
-            <a class="cta dashboard-cta" href="{{ url_for('reports') }}">View Inspection Reports →</a>
+            <a class="cta dashboard-cta" href="{{ url_for('inspection_reports_lgi') }}">View Inspection Reports →</a>
         </div>
     </div>
 
@@ -861,7 +861,7 @@
                 <span>Submit an official file or document to the Zonal Inspector.</span>
                 <span class="arrow">Open →</span>
             </a>
-            <a class="dashboard-card" href="{{ url_for('reports') }}">
+            <a class="dashboard-card" href="{{ url_for('inspection_reports_lgi') }}">
                 <b>Inspection Reports</b>
                 <span>Receive reports issued by the Zonal Inspector for your LGA.</span>
                 <span class="arrow">Open →</span>
@@ -929,6 +929,7 @@
             <a class="dashboard-card" href="{{ url_for('supporting_file_search') }}"><b>File Search</b><span>Search files by Reference No. or File ID only. Corps Member searches are available only within assigned PPA inspections.</span><span class="arrow">Open →</span></a>
             <a class="dashboard-card" href="{{ url_for('receive') }}"><b>Register New File</b><span>Receive and register a file submitted by an LGI.</span><span class="arrow">Open →</span></a>
             <a class="dashboard-card" href="{{ url_for('inspections') }}"><b>Inspections</b><span>Open assigned PPA inspections and submit reports.</span><span class="arrow">Open →</span></a>
+            <a class="dashboard-card" href="{{ url_for('inspection_reports_home') }}"><b>Inspection Reports</b><span>Submit field inspection reports to the Zonal Inspector and track returned reports.</span><span class="arrow">Open →</span></a>
         </div>
     </div>
 
@@ -958,7 +959,7 @@
     <div class="dashboard-section dashboard-flat-section">
         <h2>Inspection &amp; PPA Monitoring</h2>
         <p class="section-description">Monitor PPA assignments, Corps Member inspections and reports submitted by Supporting Staff.</p>
-        <a class="cta dashboard-cta" href="{{ url_for('inspections') }}">Open Inspection →</a>
+        <div class="actions"><a class="cta dashboard-cta" href="{{ url_for('inspections') }}">Open Inspection →</a><a class="btn" href="{{ url_for('inspection_review_inbox') }}">Review Inspection Reports →</a></div>
     </div>
     <div class="dashboard-section dashboard-flat-section">
         <h2>Corps Member Reposting</h2>

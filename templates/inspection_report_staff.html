@@ -1,15 +1,18 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{staff.full_name}} — Inspection Report</title>
-<style>
-body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;color:#1f2937}.wrap{max-width:1200px;margin:28px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 8px #00000008}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.folder{display:block;text-decoration:none;color:#111827;background:#fff;border:1px solid #dbe3ea;border-radius:14px;padding:18px}.folder-icon{font-size:32px}.muted{color:#6b7280}.pill{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px;margin:3px 4px 0 0}.present{background:#dcfce7;color:#166534}.absent{background:#fee2e2;color:#991b1b}.pending{background:#fef3c7;color:#92400e}.btn{display:inline-block;padding:9px 13px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;font-size:14px}
-</style></head><body><div class="wrap">
-<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px"><div><a class="btn" href="{{url_for('inspection_reports')}}">← Staff Folders</a><h1 style="margin:14px 0 4px">{{staff.full_name}}</h1><div class="muted">Inspection reports based on assigned PPAs</div></div><a class="btn" href="{{url_for('dashboard')}}">Dashboard</a></div>
-<div class="grid">
-{% for p in ppas %}
-<a class="folder" href="{{url_for('inspection_report_ppa',ppa_id=p.id)}}">
-<div class="folder-icon">📂</div><h2 style="margin:8px 0 4px">{{p.name}}</h2><div class="muted">{{p.lga}}</div>
-<div style="margin-top:12px"><span class="pill present">Present {{p.present_count}}</span><span class="pill absent">Absent {{p.absent_count}}</span><span class="pill pending">Pending {{p.pending_count}}</span></div>
-<div class="muted" style="margin-top:10px">{{p.total}} active Corps Members</div>
-</a>
-{% else %}<div class="card">No active PPA is assigned to this staff member.</div>{% endfor %}
-</div></div></body></html>
+{% extends "base.html" %}
+{% block title %}{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Inspection Report{% else %}My Inspection Reports{% endif %} | Katsina Zonal Office{% endblock %}
+{% block content %}
+<div class="head"><div><small>FIELD INSPECTION REPORTS</small><h1>{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Returned Report{% else %}My Inspection Reports{% endif %}</h1><p>{% if mode == 'new' %}Submit inspection findings and supporting evidence to the Zonal Inspector.{% elif mode == 'edit' %}Correct the report in line with the ZI's review comment, then resubmit it.{% else %}Track your submitted reports and respond to any report returned for correction.{% endif %}</p></div><div class="actions"><a class="btn" href="{{ url_for('inspection_reports_home') }}">My Reports</a>{% if mode != 'new' and mode != 'edit' %}<a class="cta" href="{{ url_for('inspection_report_new') }}">＋ New Report</a>{% endif %}</div></div>
+{% if mode == 'new' or mode == 'edit' %}
+{% set f = form or {} %}
+<div class="card"><form method="post" enctype="multipart/form-data" action="{% if mode == 'edit' %}{{ url_for('inspection_report_resubmit',submission_id=submission.id) }}{% else %}{{ url_for('inspection_report_new') }}{% endif %}">
+<div class="grid"><label>Local Government Area <i>*</i><select name="lga" required>{% for lga in lgas %}<option value="{{ lga }}" {% if f.get('lga') == lga %}selected{% endif %}>{{ lga }}</option>{% endfor %}</select></label><label>Inspection Date <i>*</i><input type="date" name="inspection_date" required value="{{ f.get('inspection_date','') }}"></label><label>PPA / Employer<input name="ppa_employer" value="{{ f.get('ppa_employer','') or '' }}" placeholder="School, employer or establishment"></label><label>Corps Member (if applicable)<input name="corps_member" value="{{ f.get('corps_member','') or '' }}" placeholder="Name or State Code"></label><label style="grid-column:1/-1">Inspection Subject <i>*</i><input name="subject" required value="{{ f.get('subject','') }}" placeholder="Brief title describing the inspection"></label></div>
+<label>Findings <i>*</i><textarea name="findings" rows="6" required placeholder="Record factual observations, issues identified and relevant details.">{{ f.get('findings','') }}</textarea></label><label>Recommendations / Follow-up Required<textarea name="recommendations" rows="4" placeholder="Recommended corrective action or follow-up.">{{ f.get('recommendations','') or '' }}</textarea></label>
+<label>Supporting Evidence <small>(PDF, image, Word, Excel or CSV; maximum 12 MB per file)</small><input type="file" name="evidence" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv"></label>
+{% if mode == 'edit' %}<p class="notice"><b>ZI return comment:</b> {{ submission.review_comment or 'Please review and correct the report.' }}</p>{% endif %}
+<div class="actions"><a href="{{ url_for('inspection_reports_home') }}">Cancel</a><button class="cta" type="submit">{% if mode == 'edit' %}Resubmit Corrected Report{% else %}Submit to Zonal Inspector{% endif %}</button></div></form></div>
+{% else %}
+<div class="card"><div class="table-wrap"><table class="records-table"><thead><tr><th>Report ID</th><th>Inspection Date</th><th>LGA</th><th>Subject</th><th>Submitted</th><th>Status</th><th>ZI Comment</th><th>Action</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.report_id }}</td><td>{{ r.inspection_date }}</td><td>{{ r.lga }}</td><td>{{ r.subject }}</td><td>{{ r.submitted_at }}</td><td><span class="status-badge">{{ r.status }}</span></td><td>{{ r.review_comment or '—' }}</td><td>{% if r.status == 'Returned' %}<a class="btn" href="{{ url_for('inspection_report_resubmit',submission_id=r.id) }}">Revise & Resubmit</a>{% else %}<a class="btn" href="{{ url_for('inspection_report_view',submission_id=r.id) }}">View</a>{% endif %}</td></tr>{% else %}<tr><td colspan="8">No inspection reports submitted yet.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endif %}
+{% endblock %}
