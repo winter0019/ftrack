@@ -1,18 +1,53 @@
 {% extends "base.html" %}
-{% block title %}{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Inspection Report{% else %}My Inspection Reports{% endif %} | Katsina Zonal Office{% endblock %}
+{% block title %}{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Inspection Report{% else %}My Inspection Reports{% endif %} | Katsina Zonal Office
+{% endblock %}
 {% block content %}
-<div class="head"><div><small>FIELD INSPECTION REPORTS</small><h1>{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Returned Report{% else %}My Inspection Reports{% endif %}</h1><p>{% if mode == 'new' %}Submit inspection findings and supporting evidence to the Zonal Inspector.{% elif mode == 'edit' %}Correct the report in line with the ZI's review comment, then resubmit it.{% else %}Track your submitted reports and respond to any report returned for correction.{% endif %}</p></div><div class="actions"><a class="btn" href="{{ url_for('inspection_reports_home') }}">My Reports</a>{% if mode != 'new' and mode != 'edit' %}<a class="cta" href="{{ url_for('inspection_report_new') }}">＋ New Report</a>{% endif %}</div></div>
+<style>
+/* Scoped responsive layout for the Supporting Staff inspection form */
+.inspection-report-page{color:#192b32}
+.inspection-report-page .ir-card{background:#fff;border:1px solid #dce7e1;border-radius:16px;padding:clamp(18px,2.5vw,30px);box-shadow:0 8px 26px rgba(13,60,43,.06)}
+.inspection-report-page .ir-form{display:block!important;width:100%;max-width:100%;}
+.inspection-report-page .ir-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 22px;margin-bottom:20px;width:100%}
+.inspection-report-page .ir-field{display:flex!important;flex-direction:column;align-items:stretch;gap:8px;width:100%;min-width:0;font-size:14px;font-weight:700;color:#263b34;line-height:1.4}
+.inspection-report-page .ir-field > span{display:block}
+.inspection-report-page .ir-field i{color:#c0392b;font-style:normal}
+.inspection-report-page .ir-field input:not([type=file]),.inspection-report-page .ir-field select,.inspection-report-page .ir-field textarea{display:block;width:100%;min-width:0;max-width:100%;padding:12px 13px;border:1px solid #cbd9d1;border-radius:9px;background:#fff;color:#192b32;font:inherit;font-weight:400;line-height:1.45;box-shadow:inset 0 1px 2px rgba(0,0,0,.025)}
+.inspection-report-page .ir-field input:focus,.inspection-report-page .ir-field select:focus,.inspection-report-page .ir-field textarea:focus{outline:3px solid rgba(21,149,101,.16);border-color:#159565}
+.inspection-report-page .ir-field textarea{resize:vertical;min-height:130px}
+.inspection-report-page .ir-field .ir-help{font-size:12px;font-weight:400;color:#63766d}
+.inspection-report-page .ir-full{grid-column:1/-1}
+.inspection-report-page .ir-upload{padding:14px;border:1px dashed #b8cec1;border-radius:10px;background:#f8fbf9}
+.inspection-report-page .ir-actions{display:flex!important;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-top:24px;padding-top:20px;border-top:1px solid #e4ece7}
+.inspection-report-page .ir-actions .cta{min-height:48px;padding:13px 22px;border-radius:10px}
+.inspection-report-page .ir-cancel{color:#47675a;font-weight:700;text-decoration:none;padding:10px 0}
+.inspection-report-page .ir-cancel:hover{text-decoration:underline}
+.inspection-report-page .ir-intro{max-width:760px}
+.inspection-report-page .ir-card .notice{padding:13px 15px;background:#fff8e7;border:1px solid #f0dca5;border-radius:9px;color:#694f13}
+@media(max-width:760px){.inspection-report-page .ir-grid{grid-template-columns:minmax(0,1fr);gap:16px}.inspection-report-page .ir-full{grid-column:auto}.inspection-report-page .ir-card{padding:16px}.inspection-report-page .ir-actions{align-items:stretch;flex-direction:column}.inspection-report-page .ir-actions .cta{width:100%;white-space:normal}.inspection-report-page .ir-cancel{align-self:flex-start}}
+@media print{.inspection-report-page .ir-actions,.inspection-report-page .actions{display:none!important}.inspection-report-page .ir-card{box-shadow:none;border:0;padding:0}}
+</style>
+<div class="inspection-report-page">
+<div class="head"><div class="ir-intro"><small>FIELD INSPECTION REPORTS</small><h1>{% if mode == 'new' %}Submit Inspection Report{% elif mode == 'edit' %}Revise Returned Report{% else %}My Inspection Reports{% endif %}</h1><p>{% if mode == 'new' %}Submit inspection findings and supporting evidence to the Zonal Inspector.{% elif mode == 'edit' %}Correct the report in line with the ZI's review comment, then resubmit it.{% else %}Track your submitted reports and respond to any report returned for correction.{% endif %}</p></div><div class="actions"><a class="btn" href="{{ url_for('inspection_reports_home') }}">My Reports</a>{% if mode != 'new' and mode != 'edit' %}<a class="cta" href="{{ url_for('inspection_report_new') }}">＋ New Report</a>{% endif %}</div></div>
 {% if mode == 'new' or mode == 'edit' %}
 {% set f = form or {} %}
-<div class="card"><form method="post" enctype="multipart/form-data" action="{% if mode == 'edit' %}{{ url_for('inspection_report_resubmit',submission_id=submission.id) }}{% else %}{{ url_for('inspection_report_new') }}{% endif %}">
-<div class="grid"><label>Local Government Area <i>*</i><select name="lga" required>{% for lga in lgas %}<option value="{{ lga }}" {% if f.get('lga') == lga %}selected{% endif %}>{{ lga }}</option>{% endfor %}</select></label><label>Inspection Date <i>*</i><input type="date" name="inspection_date" required value="{{ f.get('inspection_date','') }}"></label><label>PPA / Employer<input name="ppa_employer" value="{{ f.get('ppa_employer','') or '' }}" placeholder="School, employer or establishment"></label><label>Corps Member (if applicable)<input name="corps_member" value="{{ f.get('corps_member','') or '' }}" placeholder="Name or State Code"></label><label style="grid-column:1/-1">Inspection Subject <i>*</i><input name="subject" required value="{{ f.get('subject','') }}" placeholder="Brief title describing the inspection"></label></div>
-<label>Findings <i>*</i><textarea name="findings" rows="6" required placeholder="Record factual observations, issues identified and relevant details.">{{ f.get('findings','') }}</textarea></label><label>Recommendations / Follow-up Required<textarea name="recommendations" rows="4" placeholder="Recommended corrective action or follow-up.">{{ f.get('recommendations','') or '' }}</textarea></label>
-<label>Supporting Evidence <small>(PDF, image, Word, Excel or CSV; maximum 12 MB per file)</small><input type="file" name="evidence" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv"></label>
+<div class="ir-card"><form class="ir-form" method="post" enctype="multipart/form-data" action="{% if mode == 'edit' %}{{ url_for('inspection_report_resubmit',submission_id=submission.id) }}{% else %}{{ url_for('inspection_report_new') }}{% endif %}">
+<div class="ir-grid">
+<label class="ir-field"><span>Local Government Area <i>*</i></span><select name="lga" required>{% for lga in lgas %}<option value="{{ lga }}" {% if f.get('lga') == lga %}selected{% endif %}>{{ lga }}</option>{% endfor %}</select></label>
+<label class="ir-field"><span>Inspection Date <i>*</i></span><input type="date" name="inspection_date" required value="{{ f.get('inspection_date','') }}"></label>
+<label class="ir-field"><span>PPA / Employer</span><input name="ppa_employer" value="{{ f.get('ppa_employer','') or '' }}" placeholder="School, employer or establishment"></label>
+<label class="ir-field"><span>Corps Member (if applicable)</span><input name="corps_member" value="{{ f.get('corps_member','') or '' }}" placeholder="Name or State Code"></label>
+<label class="ir-field ir-full"><span>Inspection Subject <i>*</i></span><input name="subject" required value="{{ f.get('subject','') }}" placeholder="Brief title describing the inspection"></label>
+<label class="ir-field ir-full"><span>Findings <i>*</i></span><textarea name="findings" rows="6" required placeholder="Record factual observations, issues identified and relevant details.">{{ f.get('findings','') }}</textarea></label>
+<label class="ir-field ir-full"><span>Recommendations / Follow-up Required</span><textarea name="recommendations" rows="4" placeholder="Recommended corrective action or follow-up.">{{ f.get('recommendations','') or '' }}</textarea></label>
+<label class="ir-field ir-full"><span>Supporting Evidence <small class="ir-help">PDF, image, Word, Excel or CSV; maximum 12 MB per file</small></span><input class="ir-upload" type="file" name="evidence" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv"></label>
+</div>
 {% if mode == 'edit' %}<p class="notice"><b>ZI return comment:</b> {{ submission.review_comment or 'Please review and correct the report.' }}</p>{% endif %}
-<div class="actions"><a href="{{ url_for('inspection_reports_home') }}">Cancel</a><button class="cta" type="submit">{% if mode == 'edit' %}Resubmit Corrected Report{% else %}Submit to Zonal Inspector{% endif %}</button></div></form></div>
+<div class="ir-actions"><a class="ir-cancel" href="{{ url_for('inspection_reports_home') }}">Cancel</a><button class="cta" type="submit">{% if mode == 'edit' %}Resubmit Corrected Report{% else %}Submit to Zonal Inspector{% endif %}</button></div>
+</form></div>
 {% else %}
 <div class="card"><div class="table-wrap"><table class="records-table"><thead><tr><th>Report ID</th><th>Inspection Date</th><th>LGA</th><th>Subject</th><th>Submitted</th><th>Status</th><th>ZI Comment</th><th>Action</th></tr></thead><tbody>
 {% for r in rows %}<tr><td>{{ r.report_id }}</td><td>{{ r.inspection_date }}</td><td>{{ r.lga }}</td><td>{{ r.subject }}</td><td>{{ r.submitted_at }}</td><td><span class="status-badge">{{ r.status }}</span></td><td>{{ r.review_comment or '—' }}</td><td>{% if r.status == 'Returned' %}<a class="btn" href="{{ url_for('inspection_report_resubmit',submission_id=r.id) }}">Revise & Resubmit</a>{% else %}<a class="btn" href="{{ url_for('inspection_report_view',submission_id=r.id) }}">View</a>{% endif %}</td></tr>{% else %}<tr><td colspan="8">No inspection reports submitted yet.</td></tr>{% endfor %}
 </tbody></table></div></div>
 {% endif %}
+</div>
 {% endblock %}
