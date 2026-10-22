@@ -499,6 +499,7 @@ img, video, iframe, canvas, svg { max-width: 100%; }
       <a href="{{ url_for('inspection_reports_home') }}">My Inspection Reports</a>
     {% elif current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
       <a href="{{ url_for('inspection_review_inbox') }}">Inspection Review</a>
+      <a href="{{ url_for('inspection_results') }}">Inspection Results Report</a>
     {% elif current_user and current_user['role'] == 'LGI Officer' %}
       <a href="{{ url_for('inspection_reports_lgi') }}">LGA Inspection Reports</a>
     {% endif %}
