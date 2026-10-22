@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, session
 import os
 import csv
 import io
@@ -1552,6 +1552,129 @@ def _corps_import_handler(directory_mode=False):
             flash(f"Import failed: {exc}","error")
         return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
     return render_template("corps_members_import.html" if directory_mode else "inspection_import.html", lgas=LGAS)
+
+
+def _inspection_status_report_data(c, filters):
+    """Current inspection snapshot: latest saved inspection per active Corps Member."""
+    sql = """
+        SELECT cm.id AS corps_member_id, cm.state_code, cm.full_name AS corps_member_name,
+               cm.gender, cm.batch, cm.stream, cm.status AS member_record_status,
+               p.id AS ppa_id, p.name AS ppa_name, p.lga,
+               latest.inspection_id, latest.attendance_status, latest.query_issued,
+               latest.other_reason, latest.remarks, latest.inspected_at,
+               latest.inspector_name
+        FROM corps_members cm
+        JOIN ppa_establishments p ON p.id=cm.ppa_id
+        LEFT JOIN LATERAL (
+            SELECT ir.inspection_id, ir.attendance_status, ir.query_issued,
+                   ir.other_reason, ir.remarks, ir.inspected_at,
+                   u.full_name AS inspector_name
+            FROM inspection_records ir
+            LEFT JOIN users u ON u.id=ir.inspected_by
+            WHERE ir.corps_member_id=cm.id
+            ORDER BY ir.id DESC LIMIT 1
+        ) latest ON TRUE
+        WHERE cm.status='Active' AND p.active=1
+    """
+    args=[]
+    if filters.get('lga') in LGAS:
+        sql += " AND p.lga=%s"; args.append(filters['lga'])
+    if filters.get('ppa_id','').isdigit():
+        sql += " AND p.id=%s"; args.append(int(filters['ppa_id']))
+    if filters.get('status'):
+        if filters['status']=='Pending':
+            sql += " AND latest.inspection_id IS NULL"
+        else:
+            sql += " AND latest.attendance_status=%s"; args.append(filters['status'])
+    if filters.get('start_date'):
+        sql += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)>=%s)"; args.append(filters['start_date'])
+    if filters.get('end_date'):
+        sql += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)<=%s)"; args.append(filters['end_date'])
+    sql += " ORDER BY p.lga,p.name,cm.full_name"
+    rows=c.execute(sql,args).fetchall()
+    statuses=['Present','Absent','Leave','Sick Leave','Maternity Leave','Others','Pending']
+    counts={s:0 for s in statuses}
+    by_lga={}
+    by_ppa={}
+    for row in rows:
+        status=row['attendance_status'] if row['inspection_id'] else 'Pending'
+        counts[status]=counts.get(status,0)+1
+        lga=row['lga'] or 'Unspecified'
+        if lga not in by_lga:
+            by_lga[lga]={'lga':lga,'total':0,'statuses':{s:0 for s in statuses}}
+        by_lga[lga]['total']+=1; by_lga[lga]['statuses'][status]=by_lga[lga]['statuses'].get(status,0)+1
+        pid=row['ppa_id']
+        if pid not in by_ppa:
+            by_ppa[pid]={'ppa_id':pid,'ppa_name':row['ppa_name'],'lga':lga,'total':0,'statuses':{s:0 for s in statuses}}
+        by_ppa[pid]['total']+=1; by_ppa[pid]['statuses'][status]=by_ppa[pid]['statuses'].get(status,0)+1
+    summary={'total_members':len(rows),'status_counts':counts,
+             'inspected':sum(counts.get(s,0) for s in statuses if s!='Pending'),
+             'pending':counts.get('Pending',0),
+             'queries_issued':sum(1 for r in rows if r['inspection_id'] and r['query_issued'])}
+    return rows,summary,sorted(by_lga.values(),key=lambda x:x['lga']),sorted(by_ppa.values(),key=lambda x:(x['lga'],x['ppa_name']))
+
+
+def _inspection_status_report_filters():
+    filters={k:request.args.get(k,'').strip() for k in ('lga','ppa_id','status','start_date','end_date')}
+    if filters['lga'] not in LGAS: filters['lga']=''
+    if not filters['ppa_id'].isdigit(): filters['ppa_id']=''
+    allowed={'Present','Absent','Leave','Sick Leave','Maternity Leave','Others','Pending'}
+    if filters['status'] not in allowed: filters['status']=''
+    for key in ('start_date','end_date'):
+        if filters[key] and not re.fullmatch(r'\d{4}-\d{2}-\d{2}',filters[key]): filters[key]=''
+    return filters
+
+
+@app.route('/inspection/results')
+@login_required
+def inspection_results():
+    user=current_user()
+    if user['role'] not in ('Administrator','Zonal Inspector'):
+        flash('Only the Zonal Inspector or Administrator can view the zonal inspection results.','error')
+        return redirect(url_for('dashboard'))
+    filters=_inspection_status_report_filters()
+    c=db(); rows,summary,lga_rows,ppa_rows=_inspection_status_report_data(c,filters)
+    ppas=c.execute("SELECT id,name,lga FROM ppa_establishments WHERE active=1 ORDER BY lga,name").fetchall(); c.close()
+    return render_template('inspection_results.html',rows=rows,summary=summary,lga_rows=lga_rows,
+                           ppa_rows=ppa_rows,ppas=ppas,filters=filters,lgas=LGAS,
+                           statuses=['Present','Absent','Leave','Sick Leave','Maternity Leave','Others','Pending'],generated_at=now())
+
+
+@app.route('/inspection/results.xlsx')
+@login_required
+def inspection_results_excel():
+    user=current_user()
+    if user['role'] not in ('Administrator','Zonal Inspector'):
+        return 'Only the Zonal Inspector or Administrator can export zonal inspection results.',403
+    from openpyxl import Workbook
+    from openpyxl.styles import Font,PatternFill,Alignment
+    from openpyxl.utils import get_column_letter
+    filters=_inspection_status_report_filters(); c=db()
+    rows,summary,lga_rows,ppa_rows=_inspection_status_report_data(c,filters); c.close()
+    statuses=['Present','Absent','Leave','Sick Leave','Maternity Leave','Others','Pending']
+    wb=Workbook(); ws=wb.active; ws.title='Zonal Summary'
+    ws.append(['NYSC KATSINA ZONE — INSPECTION STATUS REPORT'])
+    ws.append(['Generated',now()]); ws.append(['LGA filter',filters['lga'] or 'All LGAs']); ws.append(['PPA filter',filters['ppa_id'] or 'All PPAs'])
+    ws.append(['Date range',(filters['start_date'] or 'Any start')+' to '+(filters['end_date'] or 'Any end')]); ws.append([])
+    ws.append(['Indicator','Count']); ws.append(['Active Corps Members in result',summary['total_members']]); ws.append(['Members with an inspection record',summary['inspected']]); ws.append(['Pending / not yet inspected',summary['pending']]); ws.append(['Queries issued in latest record',summary['queries_issued']])
+    ws.append([]); ws.append(['Current latest status','Corps Members'])
+    for s in statuses: ws.append([s,summary['status_counts'].get(s,0)])
+    lga=wb.create_sheet('LGA Breakdown'); lga.append(['LGA','Total Active Members',*statuses])
+    for r in lga_rows: lga.append([r['lga'],r['total'],*[r['statuses'].get(s,0) for s in statuses]])
+    ppa=wb.create_sheet('PPA Breakdown'); ppa.append(['LGA','PPA / Employer','Total Active Members',*statuses])
+    for r in ppa_rows: ppa.append([r['lga'],r['ppa_name'],r['total'],*[r['statuses'].get(s,0) for s in statuses]])
+    detail=wb.create_sheet('Corps Member Details'); detail.append(['State Code','Corps Member','Gender','Batch','Stream','LGA','PPA / Employer','Latest Status','Inspection ID','Inspection Date/Time','Supporting Staff','Query Issued','Other Reason','Remarks','Member Record Status'])
+    for r in rows:
+        detail.append([r['state_code'],r['corps_member_name'],r['gender'],r['batch'],r['stream'],r['lga'],r['ppa_name'],r['attendance_status'] if r['inspection_id'] else 'Pending',r['inspection_id'],r['inspected_at'],r['inspector_name'],'Yes' if r['inspection_id'] and r['query_issued'] else 'No',r['other_reason'],r['remarks'],r['member_record_status']])
+    for sh in wb.worksheets:
+        sh.freeze_panes='A2'; sh.auto_filter.ref=sh.dimensions
+        for cell in sh[1]: cell.fill=PatternFill('solid',fgColor='07543F'); cell.font=Font(color='FFFFFF',bold=True)
+        for col in sh.columns:
+            letter=get_column_letter(col[0].column); width=max((len(str(x.value or '')) for x in list(col)[:250]),default=12)
+            sh.column_dimensions[letter].width=min(max(width+2,12),42)
+            for cell in col: cell.alignment=Alignment(vertical='top',wrap_text=True)
+    out=io.BytesIO(); wb.save(out); out.seek(0)
+    return send_file(out,as_attachment=True,download_name=f'Katsina_Zone_Inspection_Status_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @app.route("/inspection/assign",methods=["POST"])
