@@ -6,8 +6,9 @@
 .directory-page{max-width:1200px;margin:24px auto;padding:clamp(16px,3vw,28px);}
 .directory-page h1{font-size:clamp(25px,3vw,36px);line-height:1.2;margin:0 0 10px;overflow-wrap:normal;word-break:normal;}
 .directory-page .directory-intro{margin:0;color:#52645d;line-height:1.55;font-size:clamp(14px,1.5vw,17px);}
-.directory-search{display:flex;gap:10px;margin:20px 0;align-items:stretch;}
-.directory-search input{flex:1;min-width:0;width:100%;padding:14px 15px;border:1px solid #ccd8d2;border-radius:11px;font-size:16px;}
+.directory-search{display:flex;gap:10px;margin:20px 0;align-items:stretch;flex-wrap:wrap;}
+.directory-search select{padding:14px 15px;border:1px solid #ccd8d2;border-radius:11px;font-size:16px;background:#fff;color:#2c3a35;}
+.directory-search input{flex:1;min-width:200px;width:100%;padding:14px 15px;border:1px solid #ccd8d2;border-radius:11px;font-size:16px;}
 .directory-search .cta{flex:0 0 auto;min-height:48px;padding:13px 24px;cursor:pointer;}
 .directory-count{margin:16px 0;color:#52645d;}
 .directory-table-wrap{width:100%;overflow-x:auto;border:1px solid #e1eae5;border-radius:12px;background:#fff;-webkit-overflow-scrolling:touch;}
@@ -25,34 +26,81 @@
 .directory-card dd{margin:0;font-weight:600;overflow-wrap:anywhere;word-break:normal;}
 .directory-card .view-link{display:inline-flex;align-items:center;justify-content:center;min-height:42px;margin-top:15px;padding:9px 15px;border-radius:9px;background:#eaf6ef;color:#086544;text-decoration:none;}
 .directory-empty{padding:18px;color:#52645d;}
+.badge-lga{display:inline-block;padding:3px 8px;background:#e2f0ea;color:#086544;border-radius:6px;font-size:12px;font-weight:600;}
+
 @media(max-width:640px){
- .directory-page{width:100%;margin:10px auto;padding:16px 14px 24px;}
- .directory-page h1{font-size:clamp(25px,7vw,32px);max-width:100%;}
- .directory-search{flex-direction:column;gap:10px;margin:17px 0;}
- .directory-search input{min-height:50px;font-size:16px;}
- .directory-search .cta{width:100%;min-height:48px;}
- .directory-table-wrap{display:none;}
- .directory-cards{display:block;}
- .directory-count{margin:14px 0;font-size:14px;}
+  .directory-page{width:100%;margin:10px auto;padding:16px 14px 24px;}
+  .directory-page h1{font-size:clamp(25px,7vw,32px);max-width:100%;}
+  .directory-search{flex-direction:column;gap:10px;margin:17px 0;}
+  .directory-search select,.directory-search input{min-height:50px;font-size:16px;width:100%;}
+  .directory-search .cta{width:100%;min-height:48px;}
+  .directory-table-wrap{display:none;}
+  .directory-cards{display:block;}
+  .directory-count{margin:14px 0;font-size:14px;}
 }
 </style>
+
 <section class="card directory-page">
   <h1>Search for Corps Member</h1>
-  <p class="directory-intro">Search active corps members in <strong>{{ assigned_lga }}</strong> only.</p>
+  
+  <p class="directory-intro">
+    {% if current_user.role in ['Administrator', 'Zonal Inspector'] %}
+      Search active corps members across <strong>Katsina Zone</strong>.
+    {% else %}
+      Search active corps members in <strong>{{ assigned_lga }}</strong>.
+    {% endif %}
+  </p>
+
   <form method="get" action="{{ url_for('lgi_corps_search') }}" class="directory-search">
+    {% if current_user.role in ['Administrator', 'Zonal Inspector'] %}
+      <select name="lga" aria-label="Filter by LGA">
+        <option value="">All LGAs</option>
+        {% for l in lgas %}
+          <option value="{{ l }}" {% if selected_lga == l %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+
     <input name="q" value="{{ q }}" placeholder="State Code, name, phone, PPA or course" aria-label="Search corps members">
     <button class="cta" type="submit">Search</button>
   </form>
-  {% if q %}<p class="directory-count">{{ rows|length }} result(s)</p>{% endif %}
+
+  {% if q or selected_lga %}<p class="directory-count">{{ rows|length }} result(s)</p>{% endif %}
 
   <div class="directory-table-wrap">
     <table class="directory-table">
-      <thead><tr><th>State Code</th><th>Name</th><th>Gender</th><th>PPA / Establishment</th><th>Phone</th><th>Details</th></tr></thead>
+      <thead>
+        <tr>
+          <th>State Code</th>
+          <th>Name</th>
+          <th>Gender</th>
+          <th>LGA</th>
+          <th>PPA / Establishment</th>
+          <th>Phone</th>
+          <th>Details</th>
+        </tr>
+      </thead>
       <tbody>
       {% for r in rows %}
-        <tr><td>{{ r.state_code }}</td><td>{{ r.full_name }}</td><td>{{ r.gender or '—' }}</td><td>{{ r.ppa_name or '—' }}</td><td>{{ r.phone or '—' }}</td><td><a href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View details</a></td></tr>
+        <tr>
+          <td>{{ r.state_code }}</td>
+          <td>{{ r.full_name }}</td>
+          <td>{{ r.gender or '—' }}</td>
+          <td><span class="badge-lga">{{ r.lga }}</span></td>
+          <td>{{ r.ppa_name or '—' }}</td>
+          <td>{{ r.phone or '—' }}</td>
+          <td><a href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View details</a></td>
+        </tr>
       {% else %}
-        <tr><td colspan="6" class="directory-empty">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</td></tr>
+        <tr>
+          <td colspan="7" class="directory-empty">
+            {% if q or selected_lga %}
+              No matching corps members found.
+            {% else %}
+              Enter a search term or select an LGA to find a corps member.
+            {% endif %}
+          </td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
@@ -64,6 +112,7 @@
         <h2>{{ r.full_name }}</h2>
         <div class="state-code">{{ r.state_code }}</div>
         <dl>
+          <dt>LGA</dt><dd><span class="badge-lga">{{ r.lga }}</span></dd>
           <dt>Gender</dt><dd>{{ r.gender or '—' }}</dd>
           <dt>PPA / Establishment</dt><dd>{{ r.ppa_name or '—' }}</dd>
           <dt>Phone</dt><dd>{% if r.phone %}<a href="tel:{{ r.phone }}">{{ r.phone }}</a>{% else %}—{% endif %}</dd>
@@ -71,7 +120,13 @@
         <a class="view-link" href="{{ url_for('lgi_corps_detail', state_code=r.state_code) }}">View details →</a>
       </article>
     {% else %}
-      <div class="directory-card directory-empty">{% if q %}No matching corps members found in your assigned LGA.{% else %}Enter a search term to find a corps member.{% endif %}</div>
+      <div class="directory-card directory-empty">
+        {% if q or selected_lga %}
+          No matching corps members found.
+        {% else %}
+          Enter a search term or select an LGA to find a corps member.
+        {% endif %}
+      </div>
     {% endfor %}
   </div>
 </section>
