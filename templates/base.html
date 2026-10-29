@@ -15,6 +15,7 @@
   --muted: #6d8178;
 }
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -505,6 +506,7 @@ img, video, iframe, canvas, svg { max-width: 100%; }
     {% endif %}
 
     {% if current_user and current_user['role'] in ('LGI Officer', 'Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('health_ppa_dashboard') }}">Health PPA Compliance</a>
       <a href="{{ url_for('directory') }}">Directory</a>
     {% endif %}
 
