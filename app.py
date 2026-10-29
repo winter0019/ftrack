@@ -785,11 +785,16 @@ def lgi_corps_search():
 
     assigned_lga = (u.get("lga") or "").strip()
     selected_lga = request.args.get("lga", "").strip()
-    q = request.args.get("q", "").strip()
     
-    active_lga = selected_lga if selected_lga in LGAS else ""
+    # Enforce assigned LGA for LGI Officers; allow select dropdown for admins/ZIs
+    if role == "LGI Officer":
+        active_lga = assigned_lga
+    else:
+        active_lga = selected_lga if selected_lga in LGAS else ""
 
+    q = request.args.get("q", "").strip()
     rows = []
+
     if q or active_lga:
         c = db()
         sql_query = """
@@ -808,14 +813,31 @@ def lgi_corps_search():
             
         if q:
             like = f"%{q}%"
-            sql_query += """ AND (
-                cm.state_code ILIKE %s OR 
-                cm.full_name ILIKE %s OR 
-                COALESCE(cm.phone, '') ILIKE %s OR 
-                COALESCE(cm.discipline, '') ILIKE %s OR 
-                p.name ILIKE %s
-            )"""
-            params.extend([like, like, like, like, like])
+            
+            # Normalize digits for phone matching (e.g., 08037877616 -> 8037877616)
+            clean_digits = re.sub(r"\D", "", q).lstrip("0")
+            
+            if clean_digits and len(clean_digits) >= 5:
+                # If query contains digits, check both raw text and normalized phone string
+                phone_like = f"%{clean_digits}%"
+                sql_query += """ AND (
+                    cm.state_code ILIKE %s OR 
+                    cm.full_name ILIKE %s OR 
+                    COALESCE(cm.phone, '') ILIKE %s OR 
+                    REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
+                    COALESCE(cm.discipline, '') ILIKE %s OR 
+                    p.name ILIKE %s
+                )"""
+                params.extend([like, like, like, phone_like, like, like])
+            else:
+                sql_query += """ AND (
+                    cm.state_code ILIKE %s OR 
+                    cm.full_name ILIKE %s OR 
+                    COALESCE(cm.phone, '') ILIKE %s OR 
+                    COALESCE(cm.discipline, '') ILIKE %s OR 
+                    p.name ILIKE %s
+                )"""
+                params.extend([like, like, like, like, like])
             
         sql_query += " ORDER BY cm.full_name ASC LIMIT 250"
         rows = c.execute(sql_query, tuple(params)).fetchall()
@@ -827,7 +849,7 @@ def lgi_corps_search():
         rows=rows,
         lgas=LGAS,
         assigned_lga=assigned_lga,
-        selected_lga=selected_lga
+        selected_lga=active_lga
     )
 
 @app.route("/lgi-corps/<path:state_code>")
