@@ -28,11 +28,11 @@ BRANCHES = ["CIM", "CW&HS", "CDS"]
 PRIORITIES = ["Normal", "High", "Urgent"]
 ROLES = ["Administrator", "Zonal Inspector", "LGI Officer", "Branch Official", "Supporting Staff"]
 
-# Health-related course keywords
+# Health-related course keywords (Strictly Clinical/Medical)
 HEALTH_COURSE_KEYWORDS = [
     "medicine", "mbbs", "nursing", "pharmacy", "dentistry", "dental",
     "radiography", "medical laboratory", "med lab", "physiotherapy",
-    "optometry", "veterinary", 
+    "optometry", "veterinary"
 ]
 
 # Acceptable PPA keywords
@@ -374,6 +374,20 @@ def classify_ppa_category(ppa_name):
 
 def evaluate_health_ppa_compliance(c):
     """Scan active corps members and update compliance review flags."""
+    # Step 1: Purge stale flags for members no longer active, no longer assigned to a PPA, 
+    # or whose discipline is no longer in HEALTH_COURSE_KEYWORDS
+    c.execute("""
+        DELETE FROM health_ppa_compliance_reviews
+        WHERE state_code NOT IN (
+            SELECT cm.state_code
+            FROM corps_members cm
+            JOIN ppa_establishments p ON p.id = cm.ppa_id
+            WHERE COALESCE(cm.status, 'Active') ILIKE 'Active' 
+              AND p.active = 1
+        )
+    """)
+
+    # Step 2: Fetch active corps members
     members = c.execute("""
         SELECT cm.state_code, cm.full_name, cm.discipline, cm.ppa_id, p.name AS ppa_name, p.lga
         FROM corps_members cm
@@ -409,6 +423,9 @@ def evaluate_health_ppa_compliance(c):
                 """, (state_code, m["ppa_id"], discipline, ppa_name, lga, flag_reason, t, t))
             else:
                 c.execute("DELETE FROM health_ppa_compliance_reviews WHERE state_code = %s", (state_code,))
+        else:
+            # Explicitly delete existing flags if the discipline is no longer classified as a health course
+            c.execute("DELETE FROM health_ppa_compliance_reviews WHERE state_code = %s", (state_code,))
 
     c.commit()
 
@@ -1026,7 +1043,12 @@ def health_ppa_dashboard():
     c = db()
     evaluate_health_ppa_compliance(c)
 
-    lga_filter = u.get("lga") if u["role"] == "LGI Officer" else request.args.get("lga", "").strip()
+    # Strictly isolate LGI Officers to their assigned LGA
+    if u["role"] == "LGI Officer":
+        lga_filter = u.get("lga", "").strip()
+    else:
+        lga_filter = request.args.get("lga", "").strip()
+
     status_filter = request.args.get("status", "").strip()
     q = request.args.get("q", "").strip()
 
@@ -1066,7 +1088,8 @@ def health_ppa_dashboard():
         lgas=LGAS,
         selected_lga=lga_filter,
         selected_status=status_filter,
-        q=q
+        q=q,
+        is_lgi=(u["role"] == "LGI Officer")
     )
 
 @app.route("/compliance/health-ppa/<path:state_code>/review", methods=["POST"])
@@ -1117,8 +1140,12 @@ def health_ppa_export_excel():
     c = db()
     evaluate_health_ppa_compliance(c)
 
-    lga_filter = u.get("lga") if u["role"] == "LGI Officer" else request.args.get("lga", "").strip()
-    
+    # Strictly isolate LGI Officers to their assigned LGA
+    if u["role"] == "LGI Officer":
+        lga_filter = u.get("lga", "").strip()
+    else:
+        lga_filter = request.args.get("lga", "").strip()
+
     sql_query = """
         SELECT r.*, cm.full_name AS corps_member_name, cm.phone
         FROM health_ppa_compliance_reviews r
