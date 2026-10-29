@@ -4,6 +4,7 @@ import csv
 import io
 import re
 import psycopg
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation
 from datetime import datetime
@@ -691,17 +692,17 @@ def files_page():
     status = request.args.get("status", "").strip()
     branch = request.args.get("branch", "").strip()
     c = db()
-    sql = "SELECT * FROM files WHERE 1=1"; args = []
+    sql_query = "SELECT * FROM files WHERE 1=1"; args = []
     if q:
-        sql += """ AND (file_id LIKE %s OR title LIKE %s OR reference_no LIKE %s
+        sql_query += """ AND (file_id LIKE %s OR title LIKE %s OR reference_no LIKE %s
                     OR lga LIKE %s OR lgi_name LIKE %s OR current_location LIKE %s)"""
         args += [f"%{q}%"] * 6
     if status:
-        sql += " AND status=%s"; args.append(status)
+        sql_query += " AND status=%s"; args.append(status)
     if branch:
-        sql += " AND current_location=%s"; args.append(branch)
-    sql += " ORDER BY id DESC"
-    rows = c.execute(sql, args).fetchall()
+        sql_query += " AND current_location=%s"; args.append(branch)
+    sql_query += " ORDER BY id DESC"
+    rows = c.execute(sql_query, args).fetchall()
     c.close()
     return render_template("files.html", rows=rows, q=q, status=status, branch=branch, branches=BRANCHES)
 
@@ -774,31 +775,60 @@ def lgi_send_file():
 @app.route("/lgi-corps-search")
 @login_required
 def lgi_corps_search():
-    """Allow LGI Officers to search active Corps Members across all LGAs."""
+    """Allow LGI Officers, Zonal Inspectors, and Administrators to search active Corps Members across all LGAs."""
     u = current_user()
-    if u["role"] != "LGI Officer":
-        flash("The corps member directory is available to LGI Officers only.", "error")
+    role = u["role"]
+    
+    if role not in ("LGI Officer", "Administrator", "Zonal Inspector"):
+        flash("The corps member directory is available to LGI Officers, Zonal Inspectors, and Administrators only.", "error")
         return redirect(url_for("dashboard"))
+
     assigned_lga = (u.get("lga") or "").strip()
-    if assigned_lga not in LGAS:
-        flash("Your account has no valid assigned LGA. Contact the Administrator.", "error")
-        return redirect(url_for("dashboard"))
+    selected_lga = request.args.get("lga", "").strip()
     q = request.args.get("q", "").strip()
+    
+    active_lga = selected_lga if selected_lga in LGAS else ""
+
     rows = []
-    if q:
+    if q or active_lga:
         c = db()
-        like = f"%{q}%"
-        rows = c.execute("""
-            SELECT cm.state_code,cm.full_name,cm.gender,cm.discipline,cm.batch,cm.stream,
-                   cm.phone,cm.status,p.name AS ppa_name,p.lga
+        sql_query = """
+            SELECT cm.state_code, cm.full_name, cm.gender, cm.discipline, 
+                   cm.batch, cm.stream, cm.phone, cm.status, 
+                   p.name AS ppa_name, p.lga
             FROM corps_members cm
-            JOIN ppa_establishments p ON p.id=cm.ppa_id
-            WHERE COALESCE(cm.status,'Active') ILIKE 'Active'
-              AND cm.state_code ILIKE %s
-            ORDER BY cm.full_name LIMIT 250
-        """, (like,)).fetchall()
+            JOIN ppa_establishments p ON p.id = cm.ppa_id
+            WHERE COALESCE(cm.status, 'Active') ILIKE 'Active'
+        """
+        params = []
+        
+        if active_lga:
+            sql_query += " AND p.lga = %s"
+            params.append(active_lga)
+            
+        if q:
+            like = f"%{q}%"
+            sql_query += """ AND (
+                cm.state_code ILIKE %s OR 
+                cm.full_name ILIKE %s OR 
+                COALESCE(cm.phone, '') ILIKE %s OR 
+                COALESCE(cm.discipline, '') ILIKE %s OR 
+                p.name ILIKE %s
+            )"""
+            params.extend([like, like, like, like, like])
+            
+        sql_query += " ORDER BY cm.full_name ASC LIMIT 250"
+        rows = c.execute(sql_query, tuple(params)).fetchall()
         c.close()
-    return render_template("lgi_corps_search.html", assigned_lga=assigned_lga, q=q, rows=rows)
+
+    return render_template(
+        "lgi_corps_search.html",
+        q=q,
+        rows=rows,
+        lgas=LGAS,
+        assigned_lga=assigned_lga,
+        selected_lga=selected_lga
+    )
 
 @app.route("/lgi-corps/<path:state_code>")
 @login_required
@@ -839,7 +869,7 @@ def lgi_file_status():
     q = request.args.get("q", "").strip()
     c = db()
     params = [assigned_lga, u["full_name"]]
-    sql = """
+    sql_query = """
         SELECT f.file_id,f.title,f.reference_no,f.lga,f.status,f.current_location,
                f.received_at,f.created_at,f.priority,f.description,
                m.action AS latest_action,m.status AS latest_movement_status,
@@ -854,10 +884,10 @@ def lgi_file_status():
     """
     if q:
         like = f"%{q}%"
-        sql += " AND (f.file_id ILIKE %s OR f.title ILIKE %s OR COALESCE(f.reference_no,'') ILIKE %s OR f.status ILIKE %s)"
+        sql_query += " AND (f.file_id ILIKE %s OR f.title ILIKE %s OR COALESCE(f.reference_no,'') ILIKE %s OR f.status ILIKE %s)"
         params.extend([like, like, like, like])
-    sql += " ORDER BY f.id DESC LIMIT 500"
-    rows = c.execute(sql, tuple(params)).fetchall()
+    sql_query += " ORDER BY f.id DESC LIMIT 500"
+    rows = c.execute(sql_query, tuple(params)).fetchall()
     c.close()
     return render_template("lgi_file_status.html", rows=rows, q=q, assigned_lga=assigned_lga)
 
@@ -1474,7 +1504,7 @@ def _corps_import_handler(directory_mode=False):
 
 def _inspection_status_report_data(c, filters):
     """Current inspection snapshot: latest saved inspection per active Corps Member."""
-    sql = """
+    sql_query = """
         SELECT cm.id AS corps_member_id, cm.state_code, cm.full_name AS corps_member_name,
                cm.gender, cm.batch, cm.stream, cm.status AS member_record_status,
                p.id AS ppa_id, p.name AS ppa_name, p.lga,
@@ -1496,20 +1526,20 @@ def _inspection_status_report_data(c, filters):
     """
     args = []
     if filters.get('lga') in LGAS:
-        sql += " AND p.lga=%s"; args.append(filters['lga'])
+        sql_query += " AND p.lga=%s"; args.append(filters['lga'])
     if filters.get('ppa_id', '').isdigit():
-        sql += " AND p.id=%s"; args.append(int(filters['ppa_id']))
+        sql_query += " AND p.id=%s"; args.append(int(filters['ppa_id']))
     if filters.get('status'):
         if filters['status'] == 'Pending':
-            sql += " AND latest.inspection_id IS NULL"
+            sql_query += " AND latest.inspection_id IS NULL"
         else:
-            sql += " AND latest.attendance_status=%s"; args.append(filters['status'])
+            sql_query += " AND latest.attendance_status=%s"; args.append(filters['status'])
     if filters.get('start_date'):
-        sql += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)>=%s)"; args.append(filters['start_date'])
+        sql_query += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)>=%s)"; args.append(filters['start_date'])
     if filters.get('end_date'):
-        sql += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)<=%s)"; args.append(filters['end_date'])
-    sql += " ORDER BY p.lga,p.name,cm.full_name"
-    rows = c.execute(sql, args).fetchall()
+        sql_query += " AND (latest.inspected_at IS NOT NULL AND LEFT(latest.inspected_at,10)<=%s)"; args.append(filters['end_date'])
+    sql_query += " ORDER BY p.lga,p.name,cm.full_name"
+    rows = c.execute(sql_query, args).fetchall()
     statuses = ['Present', 'Absent', 'Leave', 'Sick Leave', 'Maternity Leave', 'Others', 'Pending']
     counts = {s: 0 for s in statuses}
     by_lga = {}
@@ -1655,23 +1685,52 @@ def inspection_search(ppa_id):
 def inspection_record():
     u = current_user()
     if u["role"] != "Supporting Staff":
-        flash("Only Supporting Staff may submit inspection attendance.", "error"); return redirect(url_for("inspections"))
-    ppa_id = request.form.get("ppa_id", type=int); member_id = request.form.get("corps_member_id", type=int); status = request.form.get("attendance_status", "").strip(); other = request.form.get("other_reason", "").strip(); remarks = request.form.get("remarks", "").strip()
+        flash("Only Supporting Staff may submit inspection attendance.", "error")
+        return redirect(url_for("inspections"))
+        
+    ppa_id = request.form.get("ppa_id", type=int)
+    member_id = request.form.get("corps_member_id", type=int)
+    status = request.form.get("attendance_status", "").strip()
+    other = request.form.get("other_reason", "").strip()
+    remarks = request.form.get("remarks", "").strip()
+    
     allowed_status = {"Present", "Absent", "Leave", "Sick Leave", "Maternity Leave", "Others"}
     if status not in allowed_status:
-        flash("Please select a valid inspection status.", "error"); return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
+        flash("Please select a valid inspection status.", "error")
+        return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
     if status == "Others" and not other:
-        flash("Please specify the reason for Other status.", "error"); return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
-    c = db(); allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone(); member = c.execute("SELECT * FROM corps_members WHERE id=%s AND ppa_id=%s AND status='Active'", (member_id, ppa_id)).fetchone()
+        flash("Please specify the reason for Other status.", "error")
+        return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
+        
+    c = db()
+    allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
+    member = c.execute("SELECT * FROM corps_members WHERE id=%s AND ppa_id=%s AND status='Active'", (member_id, ppa_id)).fetchone()
+    
     if not allowed or not member:
-        c.close(); flash("The selected corps member or PPA is not assigned to you.", "error"); return redirect(url_for("inspections"))
-    iid = next_new_inspection_id(); t = now(); query = 1 if status == "Absent" else 0
+        c.close()
+        flash("The selected corps member or PPA is not assigned to you.", "error")
+        return redirect(url_for("inspections"))
+        
+    ppa_details = c.execute("SELECT name, lga FROM ppa_establishments WHERE id=%s", (ppa_id,)).fetchone()
+    ppa_name = ppa_details["name"] if ppa_details else None
+    ppa_lga = ppa_details["lga"] if ppa_details else None
+
+    iid = next_new_inspection_id()
+    t = now()
+    query = 1 if status == "Absent" else 0
+    
     c.execute("""INSERT INTO inspection_records(inspection_id,corps_member_id,ppa_id,inspected_by,attendance_status,query_issued,other_reason,remarks,inspected_at)
                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, member_id, ppa_id, u["id"], status, query, other, remarks, t))
+                 
     findings = f"Attendance status: {status}. Query issued: {'Yes' if query else 'No'}." + (f" Reason: {other}." if other else "")
+    
     c.execute("""INSERT INTO inspections(inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status)
-                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, member["ppa_id"] and c.execute("SELECT lga FROM ppa_establishments WHERE id=%s", (ppa_id,)).fetchone()["lga"], member["ppa_id"] and c.execute("SELECT name FROM ppa_establishments WHERE id=%s", (ppa_id,)).fetchone()["name"], member["full_name"], "PPA Attendance Inspection", findings, remarks, u["full_name"], t, "Completed"))
-    c.commit(); c.close(); flash(f"{iid} recorded successfully. Query issued: {'YES' if query else 'NO'}.", "success"); return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
+                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, ppa_lga, ppa_name, member["full_name"], "PPA Attendance Inspection", findings, remarks, u["full_name"], t, "Completed"))
+                 
+    c.commit()
+    c.close()
+    flash(f"{iid} recorded successfully. Query issued: {'YES' if query else 'NO'}.", "success")
+    return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
 
 def _next_inspection_report_id(c):
     n = c.execute("SELECT COUNT(*) AS count FROM inspection_report_submissions").fetchone()["count"]
@@ -1820,11 +1879,11 @@ def inspection_review_inbox():
         flash("Only the Zonal Inspector or Administrator can review and distribute inspection reports.", "error")
         return redirect(url_for("dashboard"))
     lga = request.args.get("lga", "").strip(); status = request.args.get("status", "").strip()
-    c = db(); sql = """SELECT s.*, (SELECT COUNT(*) FROM inspection_report_evidence e WHERE e.submission_id=s.id) AS evidence_count
+    c = db(); sql_query = """SELECT s.*, (SELECT COUNT(*) FROM inspection_report_evidence e WHERE e.submission_id=s.id) AS evidence_count
         FROM inspection_report_submissions s WHERE 1=1"""; args = []
-    if lga in LGAS: sql += " AND s.lga=%s"; args.append(lga)
-    if status in ("Submitted", "Returned", "Shared", "Acknowledged"): sql += " AND s.status=%s"; args.append(status)
-    sql += " ORDER BY s.id DESC LIMIT 300"; rows = c.execute(sql, args).fetchall(); c.close()
+    if lga in LGAS: sql_query += " AND s.lga=%s"; args.append(lga)
+    if status in ("Submitted", "Returned", "Shared", "Acknowledged"): sql_query += " AND s.status=%s"; args.append(status)
+    sql_query += " ORDER BY s.id DESC LIMIT 300"; rows = c.execute(sql_query, args).fetchall(); c.close()
     return render_template("inspection_review_inbox.html", rows=rows, lgas=LGAS, selected_lga=lga, status_filter=status)
 
 @app.route("/inspection-reports/review/<int:submission_id>")
@@ -1978,23 +2037,15 @@ def db_inspection():
 
         counts = {}
         for row in tables:
-            table = row["tablename"]
-            counts[table] = c.execute(
-                f'SELECT COUNT(*) AS count FROM "{table}"'
-            ).fetchone()["count"]
+            table_name = row["tablename"]
+            query = sql.SQL('SELECT COUNT(*) AS count FROM {}').format(sql.Identifier(table_name))
+            counts[table_name] = c.execute(query).fetchone()["count"]
 
-        database = c.execute(
-            "SELECT current_database() AS database"
-        ).fetchone()["database"]
-        version = c.execute(
-            "SELECT version() AS version"
-        ).fetchone()["version"]
+        database = c.execute("SELECT current_database() AS database").fetchone()["database"]
+        version = c.execute("SELECT version() AS version").fetchone()["version"]
 
-    rows = "".join(
-        f"<tr><td>{name}</td><td>{count}</td></tr>"
-        for name, count in counts.items()
-    )
-    html = f"""<!doctype html>
+    rows = "".join(f"<tr><td>{name}</td><td>{count}</td></tr>" for name, count in counts.items())
+    return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Database Inspection</title>
 <style>body{{font-family:Arial,sans-serif;margin:40px}}table{{border-collapse:collapse}}
 th,td{{border:1px solid #ccc;padding:8px 12px}}th{{background:#f3f3f3}}</style></head>
@@ -2002,7 +2053,6 @@ th,td{{border:1px solid #ccc;padding:8px 12px}}th{{background:#f3f3f3}}</style><
 <p><b>Database:</b> {database}</p><p><b>Server:</b> {version}</p>
 <table><tr><th>Table</th><th>Rows</th></tr>{rows}</table>
 </body></html>"""
-    return html
 
 init_db()
 
