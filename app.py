@@ -349,11 +349,11 @@ def init_db():
         """)
 
 def is_health_course(discipline):
-    """Check if the corps member's discipline belongs to health-related fields."""
+    """Check if the corps member's discipline belongs strictly to clinical/medical fields."""
     if not discipline:
         return False
     disc = discipline.lower().strip()
-    return any(keyword in disc for keyword in HEALTH_COURSE_KEYWORDS)
+    return any(re.search(r'\b' + re.escape(keyword) + r'\b', disc) for keyword in HEALTH_COURSE_KEYWORDS)
 
 def classify_ppa_category(ppa_name):
     """Classify a PPA name into 'Acceptable Category', 'School (GDSS / Community / Private)', or 'Other / Unclassified'."""
