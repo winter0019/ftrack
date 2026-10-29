@@ -32,8 +32,7 @@ ROLES = ["Administrator", "Zonal Inspector", "LGI Officer", "Branch Official", "
 HEALTH_COURSE_KEYWORDS = [
     "medicine", "mbbs", "nursing", "pharmacy", "dentistry", "dental",
     "radiography", "medical laboratory", "med lab", "physiotherapy",
-    "public health", "optometry", "anatomy", "physiology", "biochemistry",
-    "microbiology", "veterinary", "community health"
+    "optometry", "veterinary", 
 ]
 
 # Acceptable PPA keywords
