@@ -5,32 +5,89 @@
 <style>
   .compliance-page { max-width: 1200px; margin: 24px auto; padding: 20px; }
   .compliance-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
-  .badge-flagged { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; }
-  .badge-verified { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; }
-  .badge-action { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; }
+  
+  /* Badges */
+  .badge-flagged { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; display: inline-block; }
+  .badge-verified { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; display: inline-block; }
+  .badge-action { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 12px; display: inline-block; }
+
+  /* Filters */
   .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: flex-end; }
-  .filter-bar input, .filter-bar select { padding: 10px; border: 1px solid #ccd8d2; border-radius: 8px; }
-  .review-modal { background: #f9fbf9; padding: 12px; border-radius: 8px; border: 1px solid #e1eae5; margin-top: 10px; }
+  .filter-bar input, .filter-bar select { padding: 10px; border: 1px solid #ccd8d2; border-radius: 8px; box-sizing: border-box; }
+  
+  .review-modal { background: #f9fbf9; padding: 12px; border-radius: 8px; border: 1px solid #e1eae5; margin-top: 8px; }
+
+  /* Desktop Table View Defaults */
+  .desktop-table-wrapper { display: block; overflow-x: auto; width: 100%; }
+  .directory-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  .directory-table th, .directory-table td { padding: 12px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e5ece8; }
+  .mobile-cards-wrapper { display: none; }
+
+  /* Mobile Screen Rule (< 768px) */
+  @media screen and (max-width: 767px) {
+    .compliance-page { padding: 10px !important; margin: 10px auto !important; }
+    
+    /* Strictly force hide the table on mobile */
+    .desktop-table-wrapper, 
+    .desktop-table-wrapper table,
+    table.directory-table { 
+      display: none !important; 
+    }
+
+    /* Force show card layout on mobile */
+    .mobile-cards-wrapper { 
+      display: flex !important; 
+      flex-direction: column; 
+      gap: 14px; 
+      margin-top: 15px; 
+    }
+
+    .compliance-card {
+      background: #ffffff;
+      border: 1px solid #dce5e1;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+    .card-state-code { font-size: 15px; font-weight: 800; color: #0b3f30; }
+    .card-name { font-size: 15px; font-weight: 700; color: #1a2521; margin-top: 2px; }
+    
+    .card-meta-row { display: flex; gap: 16px; margin: 8px 0; font-size: 13px; color: #41524c; }
+    .card-meta-item { display: flex; flex-direction: column; }
+    .card-meta-label { font-size: 10px; font-weight: 700; color: #72847d; text-transform: uppercase; }
+
+    .card-flag-box {
+      background: #fff5f5;
+      border-left: 3px solid #dc3545;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #b02a37;
+      margin: 10px 0;
+    }
+  }
 </style>
 
 <section class="card compliance-page">
   <div class="compliance-header">
     <div>
-      <h1>Health-Related Course PPA Compliance Monitor</h1>
-      <p style="color: #52645d;">Review placement suitability for medical and health-related Corps Members.</p>
+      <h1 style="font-size: 20px; font-weight: 800; margin-bottom: 4px;">Health-Related Course PPA Compliance Monitor</h1>
+      <p style="color: #52645d; margin: 0; font-size: 13px;">Review placement suitability for medical and health-related Corps Members.</p>
     </div>
-    <a href="{{ url_for('health_ppa_export_excel', lga=selected_lga, status=selected_status, q=q) }}" class="cta" style="background: #086544; text-decoration: none; padding: 10px 18px; border-radius: 8px; color: #fff;">Export to Excel (.xlsx)</a>
+    <a href="{{ url_for('health_ppa_export_excel', lga=selected_lga, status=selected_status, q=q) }}" class="cta" style="background: #086544; text-decoration: none; padding: 10px 16px; border-radius: 8px; color: #fff; font-size: 14px; display: inline-block;">Export to Excel (.xlsx)</a>
   </div>
 
   <form method="get" class="filter-bar">
     {% if is_lgi %}
-      <div style="flex: 1; min-width: 180px;">
-        <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Assigned LGA</label>
+      <div style="flex: 1; min-width: 130px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Assigned LGA</label>
         <input type="text" value="{{ selected_lga }}" readonly style="width: 100%; background: #f0f4f2; font-weight: 700; color: #0b3f30;">
       </div>
     {% else %}
-      <div style="flex: 1; min-width: 180px;">
-        <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Filter by LGA</label>
+      <div style="flex: 1; min-width: 130px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Filter by LGA</label>
         <select name="lga" style="width: 100%;">
           <option value="">All LGAs</option>
           {% for l in lgas %}
@@ -40,8 +97,8 @@
       </div>
     {% endif %}
 
-    <div style="flex: 1; min-width: 200px;">
-      <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Filter by Status</label>
+    <div style="flex: 1; min-width: 160px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Filter by Status</label>
       <select name="status" style="width: 100%;">
         <option value="">All Verification Statuses</option>
         <option value="Flagged for Review" {% if selected_status == 'Flagged for Review' %}selected{% endif %}>Flagged for Review</option>
@@ -50,18 +107,19 @@
       </select>
     </div>
 
-    <div style="flex: 2; min-width: 220px;">
-      <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Search Query</label>
+    <div style="flex: 2; min-width: 180px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: #50635d;">Search Query</label>
       <input type="text" name="q" value="{{ q }}" placeholder="Search State Code, Name, Course, PPA..." style="width: 100%;">
     </div>
 
-    <button type="submit" class="cta" style="padding: 10px 20px;">Filter</button>
+    <button type="submit" class="cta" style="padding: 10px 18px;">Filter</button>
   </form>
 
-  <p><strong>{{ rows|length }}</strong> case(s) flagged for review.</p>
+  <p style="margin-top: 10px; font-size: 13px; color: #3b4d47;"><strong>{{ rows|length }}</strong> case(s) flagged for review.</p>
 
-  <div style="overflow-x: auto;">
-    <table class="directory-table" style="width: 100%; border-collapse: collapse;">
+  <!-- 1. DESKTOP TABLE VIEW -->
+  <div class="desktop-table-wrapper">
+    <table class="directory-table">
       <thead>
         <tr style="background: #f3f7f5;">
           <th>State Code</th>
@@ -96,11 +154,11 @@
             <details class="review-modal">
               <summary style="cursor: pointer; font-weight: bold; color: #075fca;">Review Case</summary>
               <form method="post" action="{{ url_for('health_ppa_update_review', state_code=r.state_code) }}" style="margin-top: 10px;">
-                <label style="font-size: 12px; font-weight: bold;">LGI Explanation / Notes:</label>
-                <textarea name="lgi_explanation" rows="2" style="width: 100%; padding: 6px; margin: 4px 0;" placeholder="Enter explanation (e.g. Attached to school clinic)...">{{ r.lgi_explanation or '' }}</textarea>
+                <label style="font-size: 11px; font-weight: bold;">LGI Explanation / Notes:</label>
+                <textarea name="lgi_explanation" rows="2" style="width: 100%; padding: 6px; margin: 4px 0; border: 1px solid #ccc; border-radius: 6px;" placeholder="Enter explanation...">{{ r.lgi_explanation or '' }}</textarea>
                 
-                <label style="font-size: 12px; font-weight: bold;">Decision Status:</label>
-                <select name="status" style="width: 100%; padding: 6px; margin: 4px 0;">
+                <label style="font-size: 11px; font-weight: bold; display: block; margin-top: 6px;">Decision Status:</label>
+                <select name="status" style="width: 100%; padding: 6px; margin: 4px 0; border: 1px solid #ccc; border-radius: 6px;">
                   <option value="Flagged for Review" {% if r.status == 'Flagged for Review' %}selected{% endif %}>Flagged for Review</option>
                   <option value="Verified Compliant" {% if r.status == 'Verified Compliant' %}selected{% endif %}>Verified Compliant</option>
                   <option value="Non-Compliant / Action Required" {% if r.status == 'Non-Compliant / Action Required' %}selected{% endif %}>Non-Compliant / Action Required</option>
@@ -118,6 +176,70 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+
+  <!-- 2. MOBILE CARD VIEW -->
+  <div class="mobile-cards-wrapper">
+    {% for r in rows %}
+    <div class="compliance-card">
+      <div class="card-top">
+        <div>
+          <div class="card-state-code">{{ r.state_code }}</div>
+          <div class="card-name">{{ r.corps_member_name }}</div>
+        </div>
+        <div>
+          {% if r.status == 'Verified Compliant' %}
+            <span class="badge-verified">Verified Compliant</span>
+          {% elif r.status == 'Non-Compliant / Action Required' %}
+            <span class="badge-action">Action Required</span>
+          {% else %}
+            <span class="badge-flagged">Flagged</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-meta-row">
+        <div class="card-meta-item">
+          <span class="card-meta-label">LGA</span>
+          <strong>{{ r.lga }}</strong>
+        </div>
+        <div class="card-meta-item">
+          <span class="card-meta-label">Course</span>
+          <strong>{{ r.course }}</strong>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 8px; font-size: 13px;">
+        <span class="card-meta-label">PPA / Establishment</span>
+        <div style="font-weight: 600; color: #1f2d28;">{{ r.ppa_name }}</div>
+      </div>
+
+      <div class="card-flag-box">
+        <strong>Flag Reason:</strong> {{ r.flag_reason }}
+      </div>
+
+      <details class="review-modal">
+        <summary style="cursor: pointer; font-weight: bold; color: #075fca; font-size: 13px;">Review / Edit Decision</summary>
+        <form method="post" action="{{ url_for('health_ppa_update_review', state_code=r.state_code) }}" style="margin-top: 10px;">
+          <label style="font-size: 11px; font-weight: bold; display: block;">LGI Explanation / Notes:</label>
+          <textarea name="lgi_explanation" rows="2" style="width: 100%; padding: 8px; margin: 4px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;" placeholder="Enter explanation...">{{ r.lgi_explanation or '' }}</textarea>
+          
+          <label style="font-size: 11px; font-weight: bold; display: block; margin-top: 6px;">Decision Status:</label>
+          <select name="status" style="width: 100%; padding: 8px; margin: 4px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;">
+            <option value="Flagged for Review" {% if r.status == 'Flagged for Review' %}selected{% endif %}>Flagged for Review</option>
+            <option value="Verified Compliant" {% if r.status == 'Verified Compliant' %}selected{% endif %}>Verified Compliant</option>
+            <option value="Non-Compliant / Action Required" {% if r.status == 'Non-Compliant / Action Required' %}selected{% endif %}>Non-Compliant / Action Required</option>
+          </select>
+
+          <button type="submit" class="cta" style="margin-top: 10px; width: 100%; padding: 8px; border-radius: 6px;">Save Review</button>
+        </form>
+      </details>
+    </div>
+    {% else %}
+    <div style="padding: 20px; text-align: center; color: #52645d; background: #fff; border-radius: 8px; border: 1px dashed #ccc;">
+      No health-related PPA placement flags found matching your filters.
+    </div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}
