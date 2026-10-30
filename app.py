@@ -40,7 +40,12 @@ ACCEPTABLE_PPA_KEYWORDS = [
     "hospital", "clinic", "phc", "primary health", "health centre",
     "health center", "medical center", "fmc", "fct", "police", "dss",
     "army", "customs", "navy", "airforce", "local government", "lga",
-    "university", "teaching hospital"
+    "university", "teaching hospital",
+    "national obstetric fistula", "obstetric fistula",
+    "17 brigade", "brigade headquarters", "brigade hq",
+    "health service management board", "health services management board", "hsmb",
+    "eye centre", "eye center",
+    "dept of state security", "department of state security", "state security service", "sss"
 ]
 
 # Flagged educational PPA keywords
