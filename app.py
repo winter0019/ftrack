@@ -921,7 +921,8 @@ def lgi_corps_search():
     q = request.args.get("q", "").strip()
     rows = []
 
-    if q or active_lga:
+    # Only run search query if the user has typed a search term 'q'
+    if q:
         c = db()
         sql_query = """
             SELECT cm.state_code, cm.full_name, cm.gender, cm.discipline, 
@@ -937,30 +938,29 @@ def lgi_corps_search():
             sql_query += " AND p.lga = %s"
             params.append(active_lga)
             
-        if q:
-            like = f"%{q}%"
-            clean_digits = re.sub(r"\D", "", q).lstrip("0")
-            
-            if clean_digits and len(clean_digits) >= 5:
-                phone_like = f"%{clean_digits}%"
-                sql_query += """ AND (
-                    cm.state_code ILIKE %s OR 
-                    cm.full_name ILIKE %s OR 
-                    COALESCE(cm.phone, '') ILIKE %s OR 
-                    REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
-                    COALESCE(cm.discipline, '') ILIKE %s OR 
-                    p.name ILIKE %s
-                )"""
-                params.extend([like, like, like, phone_like, like, like])
-            else:
-                sql_query += """ AND (
-                    cm.state_code ILIKE %s OR 
-                    cm.full_name ILIKE %s OR 
-                    COALESCE(cm.phone, '') ILIKE %s OR 
-                    COALESCE(cm.discipline, '') ILIKE %s OR 
-                    p.name ILIKE %s
-                )"""
-                params.extend([like, like, like, like, like])
+        like = f"%{q}%"
+        clean_digits = re.sub(r"\D", "", q).lstrip("0")
+        
+        if clean_digits and len(clean_digits) >= 5:
+            phone_like = f"%{clean_digits}%"
+            sql_query += """ AND (
+                cm.state_code ILIKE %s OR 
+                cm.full_name ILIKE %s OR 
+                COALESCE(cm.phone, '') ILIKE %s OR 
+                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
+                COALESCE(cm.discipline, '') ILIKE %s OR 
+                p.name ILIKE %s
+            )"""
+            params.extend([like, like, like, phone_like, like, like])
+        else:
+            sql_query += """ AND (
+                cm.state_code ILIKE %s OR 
+                cm.full_name ILIKE %s OR 
+                COALESCE(cm.phone, '') ILIKE %s OR 
+                COALESCE(cm.discipline, '') ILIKE %s OR 
+                p.name ILIKE %s
+            )"""
+            params.extend([like, like, like, like, like])
             
         sql_query += " ORDER BY cm.full_name ASC LIMIT 250"
         rows = c.execute(sql_query, tuple(params)).fetchall()
