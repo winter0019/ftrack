@@ -2571,9 +2571,15 @@ def monthly_clearance_create():
             except Exception as exc:
                 flash(f"Could not read upload: {exc}","error")
                 return redirect(url_for("monthly_clearance_create"))
-        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year):
-            flash("Select a valid campaign month.","error")
+        month_year = request.form.get("month_year", "").strip()
+
+        if not month_year:
+            flash("Please select a campaign month.", "error")
             return redirect(url_for("monthly_clearance_create"))
+
+       if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year):
+           flash("Invalid month format. Please use the month selector (YYYY-MM).", "error")
+           return redirect(url_for("monthly_clearance_create"))
         if not raw_codes:
             flash("Enter at least one State Code or upload a file.","error")
             return redirect(url_for("monthly_clearance_create"))
