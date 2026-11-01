@@ -3,75 +3,185 @@
 {% block title %}Create Clearance Campaign{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto py-6 px-4 sm:px-6">
-  <!-- Header Section -->
-  <div class="mb-6 border-b border-gray-200 pb-4">
-    <a href="{{ url_for('monthly_clearance_home') }}" class="text-emerald-700 hover:text-emerald-800 font-medium inline-flex items-center text-sm mb-2">
+<style>
+  .campaign-form-container {
+    max-width: 960px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+  }
+  .campaign-header {
+    margin-bottom: 1.5rem;
+  }
+  .campaign-back-link {
+    color: #047857;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-block;
+    margin-bottom: 0.5rem;
+  }
+  .campaign-back-link:hover {
+    text-decoration: underline;
+  }
+  .campaign-title {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 0.25rem 0;
+  }
+  .campaign-subtitle {
+    color: #4b5563;
+    font-size: 0.875rem;
+    margin: 0;
+  }
+  .campaign-card {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 2rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .form-group {
+    flex: 1 1 300px;
+    display: flex;
+    flex-direction: column;
+  }
+  .form-group-full {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+  }
+  .form-input, .form-textarea, .form-file {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    color: #111827;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+  }
+  .form-input:focus, .form-textarea:focus {
+    outline: none;
+    border-color: #059669;
+    box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
+  }
+  .form-textarea {
+    resize: vertical;
+    font-family: inherit;
+  }
+  .form-textarea.code-font {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  .form-divider {
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+    margin: 1.5rem 0;
+  }
+  .form-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  .form-disclaimer {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+    max-width: 450px;
+  }
+  .btn-submit {
+    background-color: #047857;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+  }
+  .btn-submit:hover {
+    background-color: #065f46;
+  }
+</style>
+
+<div class="campaign-form-container">
+  <div class="campaign-header">
+    <a href="{{ url_for('monthly_clearance_home') }}" class="campaign-back-link">
       &larr; Back to Clearance Dashboard
     </a>
-    <h1 class="text-3xl font-bold text-gray-900">Create Monthly Campaign</h1>
-    <p class="text-gray-600 text-sm mt-1">
+    <h1 class="campaign-title">Create Monthly Campaign</h1>
+    <p class="campaign-subtitle">
       Enter State Codes manually or upload an Excel/CSV list. Only Katsina Zone active members are accepted.
     </p>
   </div>
 
-  <!-- Form Card Container -->
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-    <form method="post" enctype="multipart/form-data" class="space-y-6">
+  <div class="campaign-card">
+    <form method="post" enctype="multipart/form-data">
       
-      <!-- Grid Row 1: Campaign Month & Title -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="flex flex-col">
-          <label for="month_year" class="block text-sm font-semibold text-gray-700 mb-2">
-            Campaign Month <span class="text-red-500">*</span>
+      <!-- Row 1: Month & Title -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="month_year" class="form-label">
+            Campaign Month <span style="color: #ef4444;">*</span>
           </label>
-          <input type="month" id="month_year" name="month_year" required
-                 class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm">
+          <input type="month" id="month_year" name="month_year" class="form-input" required>
         </div>
 
-        <div class="flex flex-col">
-          <label for="title" class="block text-sm font-semibold text-gray-700 mb-2">
-            Campaign Title
-          </label>
-          <input type="text" id="title" name="title" placeholder="e.g. October 2026 Clearance Review"
-                 class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm">
+        <div class="form-group">
+          <label for="title" class="form-label">Campaign Title</label>
+          <input type="text" id="title" name="title" class="form-input" placeholder="e.g. October 2026 Clearance Review">
         </div>
       </div>
 
-      <!-- Grid Row 2: State Codes Entry & Administrative Notes -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="flex flex-col">
-          <label for="state_codes" class="block text-sm font-semibold text-gray-700 mb-2">
-            State Codes <span class="text-xs font-normal text-gray-500">(one per line or comma-separated)</span>
+      <!-- Row 2: State Codes & Administrative Notes -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="state_codes" class="form-label">
+            State Codes <span style="font-weight: 400; color: #6b7280;">(one per line or comma-separated)</span>
           </label>
-          <textarea id="state_codes" name="state_codes" rows="7" placeholder="KT/26A/1234&#10;KT/26A/5678"
-                    class="w-full rounded-lg border border-gray-300 p-3 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm font-mono"></textarea>
+          <textarea id="state_codes" name="state_codes" class="form-textarea code-font" rows="6" placeholder="KT/26A/1234&#10;KT/26A/5678"></textarea>
         </div>
 
-        <div class="flex flex-col">
-          <label for="notes" class="block text-sm font-semibold text-gray-700 mb-2">
-            Administrative Notes
-          </label>
-          <textarea id="notes" name="notes" rows="7" placeholder="Internal directives, special instructions, or notes regarding this clearance batch..."
-                    class="w-full rounded-lg border border-gray-300 p-3 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm"></textarea>
+        <div class="form-group">
+          <label for="notes" class="form-label">Administrative Notes</label>
+          <textarea id="notes" name="notes" class="form-textarea" rows="6" placeholder="Internal directives, special instructions, or notes regarding this clearance batch..."></textarea>
         </div>
       </div>
 
-      <!-- File Upload Section -->
-      <div class="border-t border-gray-200 pt-6">
-        <label for="case_file" class="block text-sm font-semibold text-gray-700 mb-2">
-          Or upload Excel (.xlsx) / CSV (.csv) with a State Code column
-        </label>
-        <input type="file" id="case_file" name="case_file" accept=".xlsx,.xlsm,.csv"
-               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer">
+      <!-- File Upload Row -->
+      <div class="form-row">
+        <div class="form-group-full">
+          <label for="case_file" class="form-label">
+            Or upload Excel (.xlsx) / CSV (.csv) with a State Code column
+          </label>
+          <input type="file" id="case_file" name="case_file" class="form-file" accept=".xlsx,.xlsm,.csv">
+        </div>
       </div>
 
-      <!-- Form Footer / Submission CTA -->
-      <div class="border-t border-gray-200 pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <p class="text-xs text-gray-500 max-w-md">
+      <!-- Form Footer -->
+      <div class="form-footer">
+        <p class="form-disclaimer">
           Records are validated against the existing Corps Member directory and PPA/LGA master data.
         </p>
-        <button class="cta inline-flex items-center justify-center bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm px-6 py-3 rounded-lg shadow-sm transition-colors duration-150 cursor-pointer" type="submit">
+        <button type="submit" class="btn-submit">
           Create Draft & Validate Records
         </button>
       </div>
