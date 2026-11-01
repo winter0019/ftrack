@@ -1,1 +1,169 @@
-{% extends "base.html" %}{% block title %}Clearance Case{% endblock %}{% block content %}<div class="head"><div><h1>{{ case['full_name'] }}</h1><p>{{ case['state_code'] }} · {{ case['lga'] }} · {{ case['ppa_name'] or 'PPA not recorded' }}</p></div></div><section class="section"><p><b>Campaign:</b> {{ case['title'] }} · <b>Status:</b> {{ case['status'] }} · <b>Deadline:</b> {{ case['deadline_at'] or '—' }}</p>{% if case['campaign_status']=='Published' %}<form method="post"><label>Investigation status</label><select name="status">{% for s in statuses %}<option value="{{ s }}" {% if case['status']==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><label>Corps Member's explanation</label><textarea name="explanation" rows="4">{{ case['explanation'] or '' }}</textarea><label>Follow-up action / contact details</label><textarea name="follow_up_action" rows="3">{{ case['follow_up_action'] or '' }}</textarea><label>LGI recommendation</label><textarea name="recommendation" rows="3">{{ case['recommendation'] or '' }}</textarea><label>Resolution note</label><textarea name="resolution_note" rows="3">{{ case['resolution_note'] or '' }}</textarea><button class="cta">Save Investigation Update</button></form>{% else %}<p>Campaign is not open for follow-up.</p>{% endif %}</section>{% if not is_lgi %}<section class="section"><h2>ZI / Administrator: edit published source record</h2><form method="post" action="{{ url_for('monthly_clearance_edit_case',case_id=case['id']) }}"><label>Correct State Code</label><input name="state_code" value="{{ case['state_code'] }}" required><button class="cta">Update Source Record</button></form></section>{% endif %}{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Clearance Case — {{ case['full_name'] }}{% endblock %}
+
+{% block content %}
+<style>
+    .case-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .head {
+        margin-bottom: 20px;
+    }
+    .head h1 {
+        margin: 0 0 5px 0;
+        font-size: 2rem;
+    }
+    .head p {
+        margin: 0;
+        color: #888;
+    }
+    .meta-bar {
+        background: #111;
+        border: 1px solid #222;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 24px;
+        font-size: 0.95rem;
+    }
+    .section-card {
+        background: #121212;
+        border: 1px solid #282828;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 18px;
+    }
+    .form-group label {
+        font-weight: 600;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+        color: #ddd;
+    }
+    .form-group select, 
+    .form-group textarea, 
+    .form-group input {
+        width: 100%;
+        background: #1e1e1e;
+        border: 1px solid #333;
+        color: #fff;
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 0.95rem;
+        box-sizing: border-box;
+    }
+    .form-group select:focus, 
+    .form-group textarea:focus, 
+    .form-group input:focus {
+        outline: none;
+        border-color: #059669;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    @media (min-width: 640px) {
+        .form-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+    .cta {
+        background: #059669;
+        color: #fff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background 0.2s ease;
+    }
+    .cta:hover {
+        background: #10b981;
+    }
+    .admin-card {
+        border-color: #78350f;
+    }
+</style>
+
+<div class="case-container">
+    <div class="head">
+        <div>
+            <h1>{{ case['full_name'] }}</h1>
+            <p>{{ case['state_code'] }} · {{ case['lga'] }} · {{ case['ppa_name'] or 'PPA not recorded' }}</p>
+        </div>
+    </div>
+
+    <div class="meta-bar">
+        <b>Campaign:</b> {{ case['title'] }} &nbsp;·&nbsp; 
+        <b>Status:</b> {{ case['status'] }} &nbsp;·&nbsp; 
+        <b>Deadline:</b> {{ case['deadline_at'] or '—' }}
+    </div>
+
+    <section class="section-card">
+        {% if case['campaign_status'] == 'Published' %}
+            <form method="post">
+                <div class="form-group">
+                    <label for="status">Investigation status</label>
+                    <select id="status" name="status">
+                        {% for s in statuses %}
+                            <option value="{{ s }}" {% if case['status'] == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="explanation">Corps Member's explanation</label>
+                        <textarea id="explanation" name="explanation" rows="4">{{ case['explanation'] or '' }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="follow_up_action">Follow-up action / contact details</label>
+                        <textarea id="follow_up_action" name="follow_up_action" rows="4">{{ case['follow_up_action'] or '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="recommendation">LGI recommendation</label>
+                        <textarea id="recommendation" name="recommendation" rows="3">{{ case['recommendation'] or '' }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="resolution_note">Resolution note</label>
+                        <textarea id="resolution_note" name="resolution_note" rows="3">{{ case['resolution_note'] or '' }}</textarea>
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px;">
+                    <button type="submit" class="cta">Save Investigation Update</button>
+                </div>
+            </form>
+        {% else %}
+            <p>Campaign is not open for follow-up.</p>
+        {% endif %}
+    </section>
+
+    {% if not is_lgi %}
+        <section class="section-card admin-card">
+            <h2 style="margin-top: 0; font-size: 1.1rem; color: #f59e0b;">ZI / Administrator: Edit published source record</h2>
+            <form method="post" action="{{ url_for('monthly_clearance_edit_case', case_id=case['id']) }}">
+                <div class="form-group">
+                    <label for="state_code">Correct State Code</label>
+                    <input id="state_code" name="state_code" value="{{ case['state_code'] }}" required>
+                </div>
+                <button type="submit" class="cta" style="background: #d97706;">Update Source Record</button>
+            </form>
+        </section>
+    {% endif %}
+</div>
+{% endblock %}
