@@ -7,11 +7,13 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import uuid
+import json
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(BASE, "uploads")
@@ -451,7 +453,27 @@ def current_user():
 
 @app.context_processor
 def inject_user():
-    return {"current_user": current_user()}
+    user = current_user()
+    clearance_summary = None
+    if user and request.endpoint == "dashboard":
+        try:
+            with db() as c:
+                if user["role"] == "LGI Officer":
+                    clearance_summary = c.execute("""SELECT COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE f.acknowledged_at IS NOT NULL) AS acknowledged,
+                        COUNT(*) FILTER (WHERE f.status='Resolved') AS resolved
+                        FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+                        JOIN clearance_months cm ON cm.id=m.campaign_id
+                        WHERE m.lga=%s AND cm.status='Published'""",(user["lga"],)).fetchone()
+                elif user["role"] in ("Administrator","Zonal Inspector"):
+                    clearance_summary = c.execute("""SELECT COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE f.acknowledged_at IS NOT NULL) AS acknowledged,
+                        COUNT(*) FILTER (WHERE f.status='Resolved') AS resolved
+                        FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+                        JOIN clearance_months cm ON cm.id=m.campaign_id WHERE cm.status='Published'""").fetchone()
+        except Exception:
+            clearance_summary = None
+    return {"current_user": user, "clearance_summary": clearance_summary}
 
 def login_required(view):
     @wraps(view)
@@ -2372,7 +2394,441 @@ th,td{{border:1px solid #ccc;padding:8px 12px}}th{{background:#f3f3f3}}</style><
 <table><tr><th>Table</th><th>Rows</th></tr>{rows}</table>
 </body></html>"""
 
+
+# ---------------------------------------------------------------------------
+# MONTHLY CLEARANCE & ABSENTEEISM MANAGEMENT
+# ---------------------------------------------------------------------------
+CLEARANCE_FOLLOWUP_STATUSES = [
+    "Not Contacted", "Contacted", "Explanation Received",
+    "Recommended for Further Action", "Resolved"
+]
+CLEARANCE_ALLOWED_ROLES = ("Administrator", "Zonal Inspector", "LGI Officer")
+
+def clearance_user():
+    u = current_user()
+    if not u or u["role"] not in CLEARANCE_ALLOWED_ROLES:
+        flash("You are not authorised to access Monthly Clearance Management.", "error")
+        return None
+    return u
+
+def clearance_schema():
+    """Idempotent PostgreSQL schema additions for monthly clearance."""
+    with db() as c:
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS clearance_months (
+          id BIGSERIAL PRIMARY KEY,
+          month_year TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Draft',
+          created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL,
+          published_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          published_at TEXT,
+          deadline_at TEXT,
+          closed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          closed_at TEXT,
+          notes TEXT
+        );
+        CREATE TABLE IF NOT EXISTS missed_clearance_records (
+          id BIGSERIAL PRIMARY KEY,
+          campaign_id BIGINT NOT NULL REFERENCES clearance_months(id) ON DELETE CASCADE,
+          corps_member_id BIGINT NOT NULL REFERENCES corps_members(id) ON DELETE RESTRICT,
+          state_code TEXT NOT NULL,
+          full_name TEXT NOT NULL,
+          lga TEXT NOT NULL,
+          ppa_name TEXT,
+          source_note TEXT,
+          created_at TEXT NOT NULL,
+          created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL,
+          updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          UNIQUE(campaign_id, corps_member_id)
+        );
+        CREATE TABLE IF NOT EXISTS clearance_followups (
+          id BIGSERIAL PRIMARY KEY,
+          case_id BIGINT NOT NULL UNIQUE REFERENCES missed_clearance_records(id) ON DELETE CASCADE,
+          campaign_id BIGINT NOT NULL REFERENCES clearance_months(id) ON DELETE CASCADE,
+          lga TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Not Contacted',
+          acknowledged_at TEXT,
+          contacted_at TEXT,
+          explanation TEXT,
+          follow_up_action TEXT,
+          recommendation TEXT,
+          resolution_note TEXT,
+          updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS clearance_notifications (
+          id BIGSERIAL PRIMARY KEY,
+          campaign_id BIGINT NOT NULL REFERENCES clearance_months(id) ON DELETE CASCADE,
+          lga TEXT NOT NULL,
+          user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+          notification_type TEXT NOT NULL,
+          message TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          viewed_at TEXT,
+          reminder_key TEXT,
+          UNIQUE(campaign_id, lga, user_id, notification_type, reminder_key)
+        );
+        CREATE TABLE IF NOT EXISTS clearance_audit_logs (
+          id BIGSERIAL PRIMARY KEY,
+          campaign_id BIGINT NOT NULL REFERENCES clearance_months(id) ON DELETE CASCADE,
+          case_id BIGINT REFERENCES missed_clearance_records(id) ON DELETE SET NULL,
+          actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          actor_name TEXT NOT NULL,
+          action TEXT NOT NULL,
+          before_data TEXT,
+          after_data TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_clearance_cases_campaign ON missed_clearance_records(campaign_id);
+        CREATE INDEX IF NOT EXISTS idx_clearance_cases_lga ON missed_clearance_records(lga);
+        CREATE INDEX IF NOT EXISTS idx_clearance_notifications_user ON clearance_notifications(user_id, viewed_at);
+        """)
+
+def clearance_audit(c, campaign_id, case_id, actor, action, before=None, after=None):
+    c.execute("""INSERT INTO clearance_audit_logs
+      (campaign_id,case_id,actor_id,actor_name,action,before_data,after_data,created_at)
+      VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+      (campaign_id, case_id, actor["id"], actor["full_name"], action,
+       json.dumps(before, default=str) if before is not None else None,
+       json.dumps(after, default=str) if after is not None else None, now()))
+
+def clearance_scope_sql(user, alias="m"):
+    if user["role"] == "LGI Officer":
+        return f"{alias}.lga=%s", (user["lga"],)
+    return "TRUE", ()
+
+def clearance_member_by_code(c, code):
+    return c.execute("""
+      SELECT cm.id,cm.state_code,cm.full_name,cm.status,cm.gender,cm.discipline,
+             cm.batch,cm.stream,cm.phone,p.name AS ppa_name,p.lga
+      FROM corps_members cm LEFT JOIN ppa_establishments p ON p.id=cm.ppa_id
+      WHERE UPPER(TRIM(cm.state_code))=%s
+    """, (code.strip().upper(),)).fetchone()
+
+@app.route("/monthly-clearance")
+@login_required
+def monthly_clearance_home():
+    u = clearance_user()
+    if not u: return redirect(url_for("dashboard"))
+    with db() as c:
+        campaigns = c.execute("""
+          SELECT cm.*,
+            COUNT(DISTINCT m.id) AS total_cases,
+            COUNT(DISTINCT CASE WHEN f.acknowledged_at IS NOT NULL THEN f.id END) AS acknowledged,
+            COUNT(DISTINCT CASE WHEN f.status='Resolved' THEN f.id END) AS resolved
+          FROM clearance_months cm
+          LEFT JOIN missed_clearance_records m ON m.campaign_id=cm.id
+          LEFT JOIN clearance_followups f ON f.case_id=m.id
+          GROUP BY cm.id ORDER BY cm.id DESC
+        """).fetchall()
+        if u["role"] == "LGI Officer":
+            campaigns = [dict(x) for x in campaigns]
+            for x in campaigns:
+                x["total_cases"] = c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s AND lga=%s",(x["id"],u["lga"])).fetchone()["n"]
+                x["acknowledged"] = c.execute("SELECT COUNT(*) AS n FROM clearance_followups WHERE campaign_id=%s AND lga=%s AND acknowledged_at IS NOT NULL",(x["id"],u["lga"])).fetchone()["n"]
+                x["resolved"] = c.execute("SELECT COUNT(*) AS n FROM clearance_followups WHERE campaign_id=%s AND lga=%s AND status='Resolved'",(x["id"],u["lga"])).fetchone()["n"]
+        notifications = c.execute("""SELECT * FROM clearance_notifications
+          WHERE (user_id=%s OR (user_id IS NULL AND lga=%s))
+          ORDER BY id DESC LIMIT 15""",(u["id"],u["lga"] or "")).fetchall()
+    return render_template("monthly_clearance.html", campaigns=campaigns, notifications=notifications)
+
+@app.route("/monthly-clearance/create", methods=["GET","POST"])
+@login_required
+def monthly_clearance_create():
+    u = clearance_user()
+    if not u or u["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can create campaigns.","error")
+        return redirect(url_for("monthly_clearance_home"))
+    if request.method == "POST":
+        month_year = request.form.get("month_year","").strip()
+        title = request.form.get("title","").strip() or month_year
+        notes = request.form.get("notes","").strip()
+        raw_codes = [x.strip().upper() for x in request.form.get("state_codes","").replace(",","\n").splitlines() if x.strip()]
+        upload = request.files.get("case_file")
+        invalid, duplicate, valid = [], [], {}
+        if upload and upload.filename:
+            filename = secure_filename(upload.filename).lower()
+            try:
+                if filename.endswith(".csv"):
+                    rows = list(csv.DictReader(io.StringIO(upload.read().decode("utf-8-sig"))))
+                    for row in rows:
+                        code = next((str(v).strip().upper() for k,v in row.items() if k and k.strip().lower().replace(" ","_") in ("state_code","statecode","code")), "")
+                        if code: raw_codes.append(code)
+                elif filename.endswith((".xlsx",".xlsm")):
+                    from openpyxl import load_workbook
+                    wb = load_workbook(upload, read_only=True, data_only=True)
+                    ws = wb.active
+                    headers = [str(v or "").strip().lower().replace(" ","_") for v in next(ws.iter_rows(min_row=1,max_row=1,values_only=True))]
+                    idx = next((i for i,h in enumerate(headers) if h in ("state_code","statecode","code")), None)
+                    if idx is None: raise ValueError("Excel file must contain a State Code column.")
+                    for row in ws.iter_rows(min_row=2,values_only=True):
+                        if idx < len(row) and row[idx]: raw_codes.append(str(row[idx]).strip().upper())
+                else:
+                    raise ValueError("Upload a .xlsx or .csv file.")
+            except Exception as exc:
+                flash(f"Could not read upload: {exc}","error")
+                return redirect(url_for("monthly_clearance_create"))
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year):
+            flash("Select a valid campaign month.","error")
+            return redirect(url_for("monthly_clearance_create"))
+        if not raw_codes:
+            flash("Enter at least one State Code or upload a file.","error")
+            return redirect(url_for("monthly_clearance_create"))
+        with db() as c:
+            exists = c.execute("SELECT id FROM clearance_months WHERE month_year=%s",(month_year,)).fetchone()
+            if exists:
+                flash("A campaign already exists for that month and year.","error")
+                return redirect(url_for("monthly_clearance_home"))
+            for code in raw_codes:
+                if code in valid:
+                    duplicate.append(code); continue
+                member = clearance_member_by_code(c,code)
+                if not member or (member["status"] or "").lower() not in ("active","serving",""):
+                    invalid.append(code); continue
+                if member["lga"] not in LGAS:
+                    invalid.append(code); continue
+                valid[code] = member
+            cur = c.execute("""INSERT INTO clearance_months(month_year,title,status,created_by,created_at,notes)
+                 VALUES(%s,%s,'Draft',%s,%s,%s) RETURNING id""",(month_year,title,u["id"],now(),notes))
+            campaign_id = cur.fetchone()["id"]
+            for code, m in valid.items():
+                c.execute("""INSERT INTO missed_clearance_records
+                  (campaign_id,corps_member_id,state_code,full_name,lga,ppa_name,created_at,created_by,updated_at)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                  ON CONFLICT(campaign_id,corps_member_id) DO NOTHING""",
+                  (campaign_id,m["id"],m["state_code"],m["full_name"],m["lga"],m["ppa_name"],now(),u["id"],now()))
+                case = c.execute("SELECT id FROM missed_clearance_records WHERE campaign_id=%s AND corps_member_id=%s",(campaign_id,m["id"])).fetchone()
+                c.execute("""INSERT INTO clearance_followups(case_id,campaign_id,lga,updated_at)
+                  VALUES(%s,%s,%s,%s) ON CONFLICT(case_id) DO NOTHING""",(case["id"],campaign_id,m["lga"],now()))
+            clearance_audit(c,campaign_id,None,u,"Campaign created",None,{"month_year":month_year,"valid":len(valid),"invalid":invalid,"duplicates":duplicate})
+        flash(f"Draft created. Valid members: {len(valid)}; invalid/out-of-zone: {len(invalid)}; duplicate entries: {len(duplicate)}.","success")
+        return redirect(url_for("monthly_clearance_review",campaign_id=campaign_id))
+    return render_template("monthly_clearance_create.html", lgas=LGAS)
+
+@app.route("/monthly-clearance/<int:campaign_id>/review")
+@login_required
+def monthly_clearance_review(campaign_id):
+    u=clearance_user()
+    if not u or u["role"] not in ("Administrator","Zonal Inspector"): return redirect(url_for("monthly_clearance_home"))
+    with db() as c:
+        campaign=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
+        if not campaign: flash("Campaign not found.","error"); return redirect(url_for("monthly_clearance_home"))
+        cases=c.execute("""SELECT m.*,f.status AS followup_status,cm.gender,cm.discipline,cm.phone
+          FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+          LEFT JOIN corps_members cm ON cm.id=m.corps_member_id
+          WHERE m.campaign_id=%s ORDER BY m.lga,m.full_name""",(campaign_id,)).fetchall()
+    return render_template("monthly_clearance_review.html",campaign=campaign,cases=cases,lgas=LGAS)
+
+@app.route("/monthly-clearance/<int:campaign_id>/publish",methods=["POST"])
+@login_required
+def monthly_clearance_publish(campaign_id):
+    u=clearance_user()
+    if not u or u["role"] not in ("Administrator","Zonal Inspector"): return redirect(url_for("monthly_clearance_home"))
+    with db() as c:
+        campaign=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
+        if not campaign or campaign["status"]!="Draft":
+            flash("Only a draft campaign can be published.","error"); return redirect(url_for("monthly_clearance_home"))
+        count=c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s",(campaign_id,)).fetchone()["n"]
+        if not count: flash("A campaign with no valid cases cannot be published.","error"); return redirect(url_for("monthly_clearance_review",campaign_id=campaign_id))
+        published=now(); deadline=(datetime.now(ZoneInfo('Africa/Lagos'))+timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("""UPDATE clearance_months SET status='Published',published_by=%s,published_at=%s,deadline_at=%s WHERE id=%s""",(u["id"],published,deadline,campaign_id))
+        for lga in LGAS:
+            n=c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s AND lga=%s",(campaign_id,lga)).fetchone()["n"]
+            if n:
+                lgis=c.execute("SELECT id FROM users WHERE role='LGI Officer' AND lga=%s AND active=1",(lga,)).fetchall()
+                for lgi in lgis:
+                    c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,user_id,notification_type,message,created_at,reminder_key)
+                      VALUES(%s,%s,%s,'Published',%s,%s,'published') ON CONFLICT DO NOTHING""",
+                      (campaign_id,lga,lgi["id"],f"{campaign['title']}: {n} missed-clearance case(s) require your investigation. Respond within 7 days.",published))
+                if not lgis:
+                    c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,notification_type,message,created_at,reminder_key)
+                      VALUES(%s,%s,'Published',%s,%s,'published') ON CONFLICT DO NOTHING""",
+                      (campaign_id,lga,f"{campaign['title']}: {n} case(s) awaiting LGI action.",published))
+        clearance_audit(c,campaign_id,None,u,"Campaign published",{"status":"Draft"},{"status":"Published","deadline_at":deadline})
+    flash("Campaign published. Assigned LGIs have been notified and the seven-day response period has started.","success")
+    return redirect(url_for("monthly_clearance_home"))
+
+@app.route("/monthly-clearance/<int:campaign_id>")
+@login_required
+def monthly_clearance_detail(campaign_id):
+    u=clearance_user()
+    if not u:return redirect(url_for("dashboard"))
+    with db() as c:
+        campaign=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
+        if not campaign: flash("Campaign not found.","error"); return redirect(url_for("monthly_clearance_home"))
+        cond,params=clearance_scope_sql(u)
+        cases=c.execute(f"""SELECT m.*,f.status,f.acknowledged_at,f.contacted_at,f.explanation,
+           f.follow_up_action,f.recommendation,f.resolution_note,f.updated_at AS followup_updated
+           FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+           WHERE m.campaign_id=%s AND {cond} ORDER BY m.lga,m.full_name""",(campaign_id,*params)).fetchall()
+        total=len(cases)
+        metrics={"total":total,"acknowledged":sum(bool(x["acknowledged_at"]) for x in cases),
+          "contacted":sum(bool(x["contacted_at"]) for x in cases),
+          "explained":sum(x["status"]=="Explanation Received" for x in cases),
+          "recommended":sum(x["status"]=="Recommended for Further Action" for x in cases),
+          "resolved":sum(x["status"]=="Resolved" for x in cases)}
+        lga_summary=c.execute("""SELECT m.lga,COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE f.acknowledged_at IS NOT NULL) AS acknowledged,
+          COUNT(*) FILTER (WHERE f.status='Resolved') AS resolved
+          FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+          WHERE m.campaign_id=%s GROUP BY m.lga ORDER BY m.lga""",(campaign_id,)).fetchall()
+        if u["role"] == "LGI Officer":
+            lga_summary=[x for x in lga_summary if x["lga"]==u["lga"]]
+        audit=c.execute("""SELECT * FROM clearance_audit_logs WHERE campaign_id=%s ORDER BY id DESC LIMIT 100""",(campaign_id,)).fetchall() if u["role"]!="LGI Officer" else []
+    return render_template("monthly_clearance_detail.html",campaign=campaign,cases=cases,metrics=metrics,lga_summary=lga_summary,audit=audit,is_lgi=u["role"]=="LGI Officer")
+
+@app.route("/monthly-clearance/case/<int:case_id>",methods=["GET","POST"])
+@login_required
+def monthly_clearance_case(case_id):
+    u=clearance_user()
+    if not u:return redirect(url_for("dashboard"))
+    with db() as c:
+        case=c.execute("""SELECT m.*,cm.status AS campaign_status,cm.title,cm.deadline_at,
+          f.status,f.acknowledged_at,f.contacted_at,f.explanation,f.follow_up_action,f.recommendation,f.resolution_note
+          FROM missed_clearance_records m JOIN clearance_months cm ON cm.id=m.campaign_id
+          JOIN clearance_followups f ON f.case_id=m.id WHERE m.id=%s""",(case_id,)).fetchone()
+        if not case: flash("Case not found.","error"); return redirect(url_for("monthly_clearance_home"))
+        if u["role"]=="LGI Officer" and case["lga"]!=u["lga"]:
+            flash("You can only access cases assigned to your LGA.","error"); return redirect(url_for("monthly_clearance_home"))
+        if request.method=="POST":
+            if case["campaign_status"]!="Published":
+                flash("Follow-up is available only while the campaign is published.","error")
+                return redirect(url_for("monthly_clearance_case",case_id=case_id))
+            status=request.form.get("status",case["status"])
+            if status not in CLEARANCE_FOLLOWUP_STATUSES: status=case["status"]
+            explanation=request.form.get("explanation","").strip()
+            action=request.form.get("follow_up_action","").strip()
+            recommendation=request.form.get("recommendation","").strip()
+            resolution=request.form.get("resolution_note","").strip()
+            if u["role"]=="LGI Officer" and not case["acknowledged_at"]:
+                c.execute("UPDATE clearance_followups SET acknowledged_at=%s WHERE case_id=%s",(now(),case_id))
+            contacted=now() if status in ("Contacted","Explanation Received","Recommended for Further Action","Resolved") else case["contacted_at"]
+            c.execute("""UPDATE clearance_followups SET status=%s,contacted_at=%s,explanation=%s,follow_up_action=%s,
+              recommendation=%s,resolution_note=%s,updated_by=%s,updated_at=%s WHERE case_id=%s""",
+              (status,contacted,explanation,action,recommendation,resolution,u["id"],now(),case_id))
+            clearance_audit(c,case["campaign_id"],case_id,u,"LGI follow-up updated",
+              {"status":case["status"]},{"status":status,"explanation":explanation,"follow_up_action":action,"recommendation":recommendation,"resolution_note":resolution})
+            flash("Investigation update saved and audit history recorded.","success")
+            return redirect(url_for("monthly_clearance_case",case_id=case_id))
+    return render_template("monthly_clearance_case.html",case=case,statuses=CLEARANCE_FOLLOWUP_STATUSES,is_lgi=u["role"]=="LGI Officer")
+
+@app.route("/monthly-clearance/case/<int:case_id>/edit",methods=["POST"])
+@login_required
+def monthly_clearance_edit_case(case_id):
+    u=clearance_user()
+    if not u or u["role"] not in ("Administrator","Zonal Inspector"):
+        flash("Only ZI/Admin may edit a published case record.","error"); return redirect(url_for("monthly_clearance_home"))
+    with db() as c:
+        m=c.execute("SELECT * FROM missed_clearance_records WHERE id=%s",(case_id,)).fetchone()
+        if not m:return redirect(url_for("monthly_clearance_home"))
+        old={"state_code":m["state_code"],"full_name":m["full_name"],"lga":m["lga"],"ppa_name":m["ppa_name"]}
+        new_code=request.form.get("state_code",m["state_code"]).strip().upper()
+        member=clearance_member_by_code(c,new_code)
+        if not member or member["lga"] not in LGAS:
+            flash("State Code was not found in the Katsina Zone Corps Member directory.","error")
+            return redirect(url_for("monthly_clearance_case",case_id=case_id))
+        c.execute("""UPDATE missed_clearance_records SET corps_member_id=%s,state_code=%s,full_name=%s,lga=%s,ppa_name=%s,
+          updated_at=%s,updated_by=%s WHERE id=%s""",(member["id"],member["state_code"],member["full_name"],member["lga"],member["ppa_name"],now(),u["id"],case_id))
+        c.execute("UPDATE clearance_followups SET lga=%s,updated_at=%s WHERE case_id=%s",(member["lga"],now(),case_id))
+        new={"state_code":member["state_code"],"full_name":member["full_name"],"lga":member["lga"],"ppa_name":member["ppa_name"]}
+        clearance_audit(c,m["campaign_id"],case_id,u,"Published case record edited",old,new)
+    flash("Published case record updated; the change is in the audit history.","success")
+    return redirect(url_for("monthly_clearance_case",case_id=case_id))
+
+@app.route("/monthly-clearance/<int:campaign_id>/close",methods=["POST"])
+@login_required
+def monthly_clearance_close(campaign_id):
+    u=clearance_user()
+    if not u or u["role"]!="Zonal Inspector":
+        flash("Only the Zonal Inspector may close a monthly campaign.","error"); return redirect(url_for("monthly_clearance_home"))
+    with db() as c:
+        camp=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
+        if not camp or camp["status"]!="Published":
+            flash("Only a published campaign can be closed.","error"); return redirect(url_for("monthly_clearance_home"))
+        c.execute("UPDATE clearance_months SET status='Closed',closed_by=%s,closed_at=%s WHERE id=%s",(u["id"],now(),campaign_id))
+        clearance_audit(c,campaign_id,None,u,"Campaign closed",{"status":"Published"},{"status":"Closed"})
+    flash("Campaign closed. Its records remain available for reporting and audit.","success")
+    return redirect(url_for("monthly_clearance_home"))
+
+@app.route("/monthly-clearance/<int:campaign_id>/report.xlsx")
+@login_required
+def monthly_clearance_export(campaign_id):
+    u=clearance_user()
+    if not u:return redirect(url_for("dashboard"))
+    from openpyxl import Workbook
+    from openpyxl.styles import Font,PatternFill
+    with db() as c:
+        camp=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
+        if not camp:return redirect(url_for("monthly_clearance_home"))
+        cond,params=clearance_scope_sql(u)
+        rows=c.execute(f"""SELECT m.state_code,m.full_name,m.lga,m.ppa_name,f.status,f.acknowledged_at,
+          f.contacted_at,f.explanation,f.follow_up_action,f.recommendation,f.resolution_note
+          FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
+          WHERE m.campaign_id=%s AND {cond} ORDER BY m.lga,m.full_name""",(campaign_id,*params)).fetchall()
+    wb=Workbook(); ws=wb.active; ws.title="Clearance Cases"
+    ws.append([f"MONTHLY CLEARANCE & ABSENTEEISM — {camp['title']}"])
+    ws.append(["State Code","Corps Member","LGA","PPA","Follow-up Status","Acknowledged","Contacted","Explanation","Follow-up Action","Recommendation","Resolution"])
+    for cell in ws[2]:
+        cell.font=Font(bold=True,color="FFFFFF"); cell.fill=PatternFill("solid",fgColor="145A43")
+    for r in rows:
+        ws.append([r["state_code"],r["full_name"],r["lga"],r["ppa_name"],r["status"],r["acknowledged_at"],r["contacted_at"],r["explanation"],r["follow_up_action"],r["recommendation"],r["resolution_note"]])
+    for col in ws.columns:
+        letter=col[0].column_letter
+        ws.column_dimensions[letter].width=min(max(max(len(str(x.value or "")) for x in col)+2,14),42)
+    output=io.BytesIO(); wb.save(output); output.seek(0)
+    return send_file(output,as_attachment=True,download_name=f"monthly_clearance_{camp['month_year']}.xlsx",mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@app.route("/monthly-clearance/notifications/<int:notification_id>/view")
+@login_required
+def monthly_clearance_notification_view(notification_id):
+    u=clearance_user()
+    if not u:return redirect(url_for("dashboard"))
+    with db() as c:
+        c.execute("""UPDATE clearance_notifications SET viewed_at=%s
+          WHERE id=%s AND (user_id=%s OR (user_id IS NULL AND lga=%s))""",(now(),notification_id,u["id"],u["lga"] or ""))
+        row=c.execute("SELECT campaign_id FROM clearance_notifications WHERE id=%s",(notification_id,)).fetchone()
+    return redirect(url_for("monthly_clearance_detail",campaign_id=row["campaign_id"]) if row else url_for("monthly_clearance_home"))
+
+@app.route("/monthly-clearance/reminders")
+def monthly_clearance_reminders():
+    """Invoke from a daily Render Cron Job; protect with CLEARANCE_CRON_SECRET."""
+    import hmac
+    secret=os.environ.get("CLEARANCE_CRON_SECRET","")
+    supplied=request.headers.get("X-Cron-Secret","")
+    if not secret or not hmac.compare_digest(secret,supplied):
+        return {"error":"Unauthorized"},401
+    sent=0
+    current=datetime.now(ZoneInfo('Africa/Lagos'))
+    with db() as c:
+        campaigns=c.execute("SELECT * FROM clearance_months WHERE status='Published'").fetchall()
+        for camp in campaigns:
+            deadline=datetime.strptime(camp["deadline_at"],"%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo('Africa/Lagos')) if camp["deadline_at"] else None
+            if not deadline:continue
+            days=(deadline-current).total_seconds()/86400
+            key="24h" if 0 < days <= 1 else ("overdue" if days <= 0 else None)
+            if not key:continue
+            lgas=c.execute("SELECT DISTINCT lga FROM missed_clearance_records WHERE campaign_id=%s",(camp["id"],)).fetchall()
+            for item in lgas:
+                lga=item["lga"]
+                pending=c.execute("""SELECT COUNT(*) AS n FROM clearance_followups f JOIN missed_clearance_records m ON m.id=f.case_id
+                  WHERE m.campaign_id=%s AND m.lga=%s AND f.status<>'Resolved'""",(camp["id"],lga)).fetchone()["n"]
+                if not pending:continue
+                lgis=c.execute("SELECT id FROM users WHERE role='LGI Officer' AND lga=%s AND active=1",(lga,)).fetchall()
+                for lgi in lgis:
+                    cur=c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,user_id,notification_type,message,created_at,reminder_key)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id""",
+                      (camp["id"],lga,lgi["id"],"Overdue" if key=="overdue" else "Reminder",
+                       f"{camp['title']}: {pending} unresolved case(s) remain. " + ("The seven-day deadline has passed." if key=="overdue" else "Your seven-day response deadline is within 24 hours."),
+                       now(),key))
+                    if cur.fetchone():sent+=1
+    return {"status":"ok","notifications_created":sent}
+
+
 init_db()
+clearance_schema()
 
 if __name__ == "__main__":
     app.run(debug=True)
