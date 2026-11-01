@@ -1756,7 +1756,7 @@ def _corps_import_handler(directory_mode=False):
                 deduped[f["state"].strip()] = f
             valid = list(deduped.values())
 
-            c = db(); t = now(); user_id = current_user()["id"]
+            c = db(); t = now(); user = current_user(); user_identifier = user["full_name"] if user else "System"
 
             ppa_keys = []; seen_ppas = set()
             for f in valid:
@@ -1768,7 +1768,7 @@ def _corps_import_handler(directory_mode=False):
                 placeholders = ",".join(["(%s,%s,1,%s,%s)"] * len(ppa_keys))
                 params = []
                 for name, lga in ppa_keys:
-                    params.extend([name, lga, user_id, t])
+                    params.extend([name, lga, user_identifier, t])
                 c.execute(f"""
                     INSERT INTO ppa_establishments(name,lga,active,created_by,created_at)
                     VALUES {placeholders}
@@ -2571,15 +2571,14 @@ def monthly_clearance_create():
             except Exception as exc:
                 flash(f"Could not read upload: {exc}","error")
                 return redirect(url_for("monthly_clearance_create"))
-        month_year = request.form.get("month_year", "").strip()
 
         if not month_year:
             flash("Please select a campaign month.", "error")
             return redirect(url_for("monthly_clearance_create"))
 
-       if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year):
-           flash("Invalid month format. Please use the month selector (YYYY-MM).", "error")
-           return redirect(url_for("monthly_clearance_create"))
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year):
+            flash("Invalid month format. Please use the month selector (YYYY-MM).", "error")
+            return redirect(url_for("monthly_clearance_create"))
         if not raw_codes:
             flash("Enter at least one State Code or upload a file.","error")
             return redirect(url_for("monthly_clearance_create"))
