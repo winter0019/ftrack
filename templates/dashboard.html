@@ -824,6 +824,16 @@
 
 
 <div class="dashboard-page">
+{% if clearance_summary %}
+<div class="dashboard-section">
+  <div class="dashboard-section-box">
+    <span class="eyebrow">Monthly Clearance & Absenteeism</span>
+    <h2>{{ clearance_summary['total'] }} published case(s)</h2>
+    <p class="section-description">{{ clearance_summary['acknowledged'] }} acknowledged · {{ clearance_summary['resolved'] }} resolved.</p>
+    <a class="cta" href="{{ url_for('monthly_clearance_home') }}">Open Monthly Clearance</a>
+  </div>
+</div>
+{% endif %}
 
 {% if current_user['role'] == 'LGI Officer' %}
 

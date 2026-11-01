@@ -493,6 +493,7 @@ img, video, iframe, canvas, svg { max-width: 100%; }
 
   <nav id="mainNavigation" aria-label="Main navigation">
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
+    {% if current_user and current_user['role'] in ('Administrator', 'Zonal Inspector', 'LGI Officer') %}<a href="{{ url_for('monthly_clearance_home') }}">Monthly Clearance</a>{% endif %}
     <a href="{{ url_for('files_page') }}">File Register</a>
     <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
     <a href="{{ url_for('inspections') }}">Inspection</a>
