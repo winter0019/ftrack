@@ -2625,30 +2625,50 @@ def monthly_clearance_review(campaign_id):
 @app.route("/monthly-clearance/<int:campaign_id>/publish",methods=["POST"])
 @login_required
 def monthly_clearance_publish(campaign_id):
-    u=clearance_user()
-    if not u or u["role"] not in ("Administrator","Zonal Inspector"): return redirect(url_for("monthly_clearance_home"))
+    u = clearance_user()
+    
+    # STRICT PERMISSION RULE: Only the Zonal Inspector can publish and notify LGIs
+    if not u or u["role"] != "Zonal Inspector":
+        flash("Only the Zonal Inspector can publish campaigns and issue notifications to LGIs.", "error")
+        return redirect(url_for("monthly_clearance_review", campaign_id=campaign_id))
+        
     with db() as c:
-        campaign=c.execute("SELECT * FROM clearance_months WHERE id=%s",(campaign_id,)).fetchone()
-        if not campaign or campaign["status"]!="Draft":
-            flash("Only a draft campaign can be published.","error"); return redirect(url_for("monthly_clearance_home"))
-        count=c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s",(campaign_id,)).fetchone()["n"]
-        if not count: flash("A campaign with no valid cases cannot be published.","error"); return redirect(url_for("monthly_clearance_review",campaign_id=campaign_id))
-        published=now(); deadline=(datetime.now(ZoneInfo('Africa/Lagos'))+timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("""UPDATE clearance_months SET status='Published',published_by=%s,published_at=%s,deadline_at=%s WHERE id=%s""",(u["id"],published,deadline,campaign_id))
+        campaign = c.execute("SELECT * FROM clearance_months WHERE id=%s", (campaign_id,)).fetchone()
+        if not campaign or campaign["status"] != "Draft":
+            flash("Only a draft campaign can be published.", "error")
+            return redirect(url_for("monthly_clearance_home"))
+            
+        count = c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s", (campaign_id,)).fetchone()["n"]
+        if not count:
+            flash("A campaign with no valid cases cannot be published.", "error")
+            return redirect(url_for("monthly_clearance_review", campaign_id=campaign_id))
+            
+        published = now()
+        deadline = (datetime.now(ZoneInfo('Africa/Lagos')) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        c.execute("""UPDATE clearance_months SET status='Published',published_by=%s,published_at=%s,deadline_at=%s WHERE id=%s""",
+                  (u["id"], published, deadline, campaign_id))
+                  
+        # Dispatch notifications explicitly attributed to the Zonal Inspector
         for lga in LGAS:
-            n=c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s AND lga=%s",(campaign_id,lga)).fetchone()["n"]
+            n = c.execute("SELECT COUNT(*) AS n FROM missed_clearance_records WHERE campaign_id=%s AND lga=%s", (campaign_id, lga)).fetchone()["n"]
             if n:
-                lgis=c.execute("SELECT id FROM users WHERE role='LGI Officer' AND lga=%s AND active=1",(lga,)).fetchall()
+                msg = f"OFFICIAL NOTICE FROM ZI ({u['full_name']}): {campaign['title']} list released with {n} missed-clearance case(s) assigned to {lga} LGA. Please investigate and respond within 7 days."
+                lgis = c.execute("SELECT id FROM users WHERE role='LGI Officer' AND lga=%s AND active=1", (lga,)).fetchall()
+                
                 for lgi in lgis:
                     c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,user_id,notification_type,message,created_at,reminder_key)
                       VALUES(%s,%s,%s,'Published',%s,%s,'published') ON CONFLICT DO NOTHING""",
-                      (campaign_id,lga,lgi["id"],f"{campaign['title']}: {n} missed-clearance case(s) require your investigation. Respond within 7 days.",published))
+                      (campaign_id, lga, lgi["id"], msg, published))
+                      
                 if not lgis:
                     c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,notification_type,message,created_at,reminder_key)
                       VALUES(%s,%s,'Published',%s,%s,'published') ON CONFLICT DO NOTHING""",
-                      (campaign_id,lga,f"{campaign['title']}: {n} case(s) awaiting LGI action.",published))
-        clearance_audit(c,campaign_id,None,u,"Campaign published",{"status":"Draft"},{"status":"Published","deadline_at":deadline})
-    flash("Campaign published. Assigned LGIs have been notified and the seven-day response period has started.","success")
+                      (campaign_id, lga, msg, published))
+                      
+        clearance_audit(c, campaign_id, None, u, "Campaign published by ZI", {"status": "Draft"}, {"status": "Published", "deadline_at": deadline})
+        
+    flash("Campaign published. Notifications dispatched from the Zonal Inspector to affected LGIs (7-day deadline active).", "success")
     return redirect(url_for("monthly_clearance_home"))
 
 @app.route("/monthly-clearance/<int:campaign_id>")
@@ -2821,7 +2841,7 @@ def monthly_clearance_reminders():
                     cur=c.execute("""INSERT INTO clearance_notifications(campaign_id,lga,user_id,notification_type,message,created_at,reminder_key)
                       VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id""",
                       (camp["id"],lga,lgi["id"],"Overdue" if key=="overdue" else "Reminder",
-                       f"{camp['title']}: {pending} unresolved case(s) remain. " + ("The seven-day deadline has passed." if key=="overdue" else "Your seven-day response deadline is within 24 hours."),
+                       f"DIRECTIVE REMINDER ({camp['title']}): {pending} unresolved case(s) remain. " + ("The seven-day response deadline has passed." if key=="overdue" else "Your seven-day response deadline is within 24 hours."),
                        now(),key))
                     if cur.fetchone():sent+=1
     return {"status":"ok","notifications_created":sent}
