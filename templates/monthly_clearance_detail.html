@@ -1,1 +1,170 @@
-{% extends "base.html" %}{% block title %}Clearance Campaign Details{% endblock %}{% block content %}<div class="head"><div><h1>{{ campaign['title'] }}</h1><p>{{ campaign['month_year'] }} · {{ campaign['status'] }} · Deadline: {{ campaign['deadline_at'] or 'Not published' }}</p></div><a class="cta" href="{{ url_for('monthly_clearance_export',campaign_id=campaign['id']) }}">Export Excel</a></div><div class="stats">{% for k,v in metrics.items() %}<div class="stat"><small>{{ k|title }}</small><h2>{{ v }}</h2></div>{% endfor %}</div><section class="section"><h2>LGA summary</h2><div class="table-wrap"><table><thead><tr><th>LGA</th><th>Cases</th><th>Acknowledged</th><th>Resolved</th></tr></thead><tbody>{% for x in lga_summary %}<tr><td>{{ x['lga'] }}</td><td>{{ x['total'] }}</td><td>{{ x['acknowledged'] }}</td><td>{{ x['resolved'] }}</td></tr>{% endfor %}</tbody></table></div></section><section class="section"><h2>Cases{% if is_lgi %} assigned to {{ current_user['lga'] }}{% endif %}</h2><div class="table-wrap"><table><thead><tr><th>State Code</th><th>Corps Member</th><th>LGA</th><th>PPA</th><th>Status</th><th>Acknowledged</th><th>Action</th></tr></thead><tbody>{% for r in cases %}<tr><td>{{ r['state_code'] }}</td><td>{{ r['full_name'] }}</td><td>{{ r['lga'] }}</td><td>{{ r['ppa_name'] or '—' }}</td><td>{{ r['status'] }}</td><td>{{ r['acknowledged_at'] or 'Pending' }}</td><td><a href="{{ url_for('monthly_clearance_case',case_id=r['id']) }}">Investigate / View</a></td></tr>{% else %}<tr><td colspan="7">No cases in this view.</td></tr>{% endfor %}</tbody></table></div></section>{% if current_user['role']=='Zonal Inspector' and campaign['status']=='Published' %}<section class="section"><h2>Close campaign</h2><form method="post" action="{{ url_for('monthly_clearance_close',campaign_id=campaign['id']) }}" onsubmit="return confirm('Close this campaign?')"><button class="cta">Close Campaign</button></form></section>{% endif %}{% if audit %}<section class="section"><h2>Audit history</h2>{% for x in audit %}<p><b>{{ x['action'] }}</b> — {{ x['actor_name'] }} — {{ x['created_at'] }}</p>{% endfor %}</section>{% endif %}{% endblock %}
+{% extends "base.html" %}
+{% block title %}Clearance Campaign Details{% endblock %}
+
+{% block content %}
+<style>
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .filter-select {
+        background: #1e1e1e;
+        border: 1px solid #333;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        outline: none;
+        cursor: pointer;
+    }
+    .filter-select:focus {
+        border-color: #059669;
+    }
+    .clear-link {
+        color: #ef4444;
+        font-size: 0.85rem;
+        text-decoration: underline;
+    }
+    .batch-badge {
+        background: #1f2937;
+        border: 1px solid #374151;
+        color: #10b981;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+</style>
+
+<div class="head">
+    <div>
+        <h1>{{ campaign['title'] }}</h1>
+        <p>{{ campaign['month_year'] }} · {{ campaign['status'] }} · Deadline: {{ campaign['deadline_at'] or 'Not published' }}</p>
+    </div>
+    <a class="cta" href="{{ url_for('monthly_clearance_export', campaign_id=campaign['id']) }}">Export Excel</a>
+</div>
+
+<div class="stats">
+    {% for k, v in metrics.items() %}
+    <div class="stat">
+        <small>{{ k|title }}</small>
+        <h2>{{ v }}</h2>
+    </div>
+    {% endfor %}
+</div>
+
+<section class="section">
+    <h2>LGA summary</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>LGA</th>
+                    <th>Cases</th>
+                    <th>Acknowledged</th>
+                    <th>Resolved</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for x in lga_summary %}
+                <tr>
+                    <td>{{ x['lga'] }}</td>
+                    <td>{{ x['total'] }}</td>
+                    <td>{{ x['acknowledged'] }}</td>
+                    <td>{{ x['resolved'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section">
+    <div class="filter-bar">
+        <h2>Cases{% if is_lgi %} assigned to {{ current_user['lga'] }}{% endif %}</h2>
+        
+        <!-- Batch Filter Dropdown -->
+        <form method="get" class="filter-group">
+            <label for="batch" style="font-weight: 600; font-size: 0.9rem;">Batch:</label>
+            <select name="batch" id="batch" class="filter-select" onchange="this.form.submit()">
+                <option value="">-- All Batches --</option>
+                {% for b in available_batches %}
+                    <option value="{{ b }}" {% if selected_batch == b %}selected{% endif %}>{{ b }}</option>
+                {% endfor %}
+            </select>
+            {% if selected_batch %}
+                <a href="{{ url_for('monthly_clearance_detail', campaign_id=campaign['id']) }}" class="clear-link">Clear filter</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>State Code</th>
+                    <th>Corps Member</th>
+                    <th>Batch</th>
+                    <th>LGA</th>
+                    <th>PPA</th>
+                    <th>Status</th>
+                    <th>Acknowledged</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in cases %}
+                <tr>
+                    <td><b>{{ r['state_code'] }}</b></td>
+                    <td>{{ r['full_name'] }}</td>
+                    <td>
+                        <span class="batch-badge">{{ r['batch'] or 'Unspecified' }}</span>
+                    </td>
+                    <td>{{ r['lga'] }}</td>
+                    <td>{{ r['ppa_name'] or '—' }}</td>
+                    <td>{{ r['status'] }}</td>
+                    <td>{{ r['acknowledged_at'] or 'Pending' }}</td>
+                    <td>
+                        <a href="{{ url_for('monthly_clearance_case', case_id=r['id']) }}">Investigate / View</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: #888; padding: 20px;">
+                        No cases found for the selected batch.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% if current_user['role'] == 'Zonal Inspector' and campaign['status'] == 'Published' %}
+<section class="section">
+    <h2>Close campaign</h2>
+    <form method="post" action="{{ url_for('monthly_clearance_close', campaign_id=campaign['id']) }}" onsubmit="return confirm('Close this campaign?')">
+        <button class="cta">Close Campaign</button>
+    </form>
+</section>
+{% endif %}
+
+{% if audit %}
+<section class="section">
+    <h2>Audit history</h2>
+    {% for x in audit %}
+    <p><b>{{ x['action'] }}</b> — {{ x['actor_name'] }} — {{ x['created_at'] }}</p>
+    {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
