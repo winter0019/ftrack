@@ -1,1 +1,82 @@
-{% extends "base.html" %}{% block title %}Create Clearance Campaign{% endblock %}{% block content %}<div class="head"><div><h1>Create Monthly Campaign</h1><p>Enter State Codes manually or upload an Excel/CSV list. Only Katsina Zone active members are accepted.</p></div></div><section class="section"><form method="post" enctype="multipart/form-data"><label>Campaign month</label><input type="month" name="month_year" required><label>Campaign title</label><input name="title" placeholder="e.g. October 2026 Clearance Review"><label>State Codes (one per line or comma-separated)</label><textarea name="state_codes" rows="7"></textarea><label>Or upload Excel (.xlsx) / CSV (.csv) with a State Code column</label><input type="file" name="case_file" accept=".xlsx,.xlsm,.csv"><label>Administrative notes</label><textarea name="notes" rows="3"></textarea><p>Records are validated against the existing Corps Member directory and PPA/LGA master data.</p><button class="cta" type="submit">Create Draft & Validate Records</button></form></section>{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Create Clearance Campaign{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto py-6 px-4 sm:px-6">
+  <!-- Header Section -->
+  <div class="mb-6 border-b border-gray-200 pb-4">
+    <a href="{{ url_for('monthly_clearance_home') }}" class="text-emerald-700 hover:text-emerald-800 font-medium inline-flex items-center text-sm mb-2">
+      &larr; Back to Clearance Dashboard
+    </a>
+    <h1 class="text-3xl font-bold text-gray-900">Create Monthly Campaign</h1>
+    <p class="text-gray-600 text-sm mt-1">
+      Enter State Codes manually or upload an Excel/CSV list. Only Katsina Zone active members are accepted.
+    </p>
+  </div>
+
+  <!-- Form Card Container -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+    <form method="post" enctype="multipart/form-data" class="space-y-6">
+      
+      <!-- Grid Row 1: Campaign Month & Title -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flex flex-col">
+          <label for="month_year" class="block text-sm font-semibold text-gray-700 mb-2">
+            Campaign Month <span class="text-red-500">*</span>
+          </label>
+          <input type="month" id="month_year" name="month_year" required
+                 class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm">
+        </div>
+
+        <div class="flex flex-col">
+          <label for="title" class="block text-sm font-semibold text-gray-700 mb-2">
+            Campaign Title
+          </label>
+          <input type="text" id="title" name="title" placeholder="e.g. October 2026 Clearance Review"
+                 class="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm">
+        </div>
+      </div>
+
+      <!-- Grid Row 2: State Codes Entry & Administrative Notes -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flex flex-col">
+          <label for="state_codes" class="block text-sm font-semibold text-gray-700 mb-2">
+            State Codes <span class="text-xs font-normal text-gray-500">(one per line or comma-separated)</span>
+          </label>
+          <textarea id="state_codes" name="state_codes" rows="7" placeholder="KT/26A/1234&#10;KT/26A/5678"
+                    class="w-full rounded-lg border border-gray-300 p-3 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm font-mono"></textarea>
+        </div>
+
+        <div class="flex flex-col">
+          <label for="notes" class="block text-sm font-semibold text-gray-700 mb-2">
+            Administrative Notes
+          </label>
+          <textarea id="notes" name="notes" rows="7" placeholder="Internal directives, special instructions, or notes regarding this clearance batch..."
+                    class="w-full rounded-lg border border-gray-300 p-3 text-gray-900 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm"></textarea>
+        </div>
+      </div>
+
+      <!-- File Upload Section -->
+      <div class="border-t border-gray-200 pt-6">
+        <label for="case_file" class="block text-sm font-semibold text-gray-700 mb-2">
+          Or upload Excel (.xlsx) / CSV (.csv) with a State Code column
+        </label>
+        <input type="file" id="case_file" name="case_file" accept=".xlsx,.xlsm,.csv"
+               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer">
+      </div>
+
+      <!-- Form Footer / Submission CTA -->
+      <div class="border-t border-gray-200 pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <p class="text-xs text-gray-500 max-w-md">
+          Records are validated against the existing Corps Member directory and PPA/LGA master data.
+        </p>
+        <button class="cta inline-flex items-center justify-center bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm px-6 py-3 rounded-lg shadow-sm transition-colors duration-150 cursor-pointer" type="submit">
+          Create Draft & Validate Records
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
