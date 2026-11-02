@@ -381,8 +381,6 @@ def classify_ppa_category(ppa_name):
 
 def evaluate_health_ppa_compliance(c):
     """Scan active corps members and update compliance review flags."""
-    # Step 1: Purge stale flags for members no longer active, no longer assigned to a PPA, 
-    # or whose discipline is no longer in HEALTH_COURSE_KEYWORDS
     c.execute("""
         DELETE FROM health_ppa_compliance_reviews
         WHERE state_code NOT IN (
@@ -394,7 +392,6 @@ def evaluate_health_ppa_compliance(c):
         )
     """)
 
-    # Step 2: Fetch active corps members
     members = c.execute("""
         SELECT cm.state_code, cm.full_name, cm.discipline, cm.ppa_id, p.name AS ppa_name, p.lga
         FROM corps_members cm
@@ -431,7 +428,6 @@ def evaluate_health_ppa_compliance(c):
             else:
                 c.execute("DELETE FROM health_ppa_compliance_reviews WHERE state_code = %s", (state_code,))
         else:
-            # Explicitly delete existing flags if the discipline is no longer classified as a health course
             c.execute("DELETE FROM health_ppa_compliance_reviews WHERE state_code = %s", (state_code,))
 
     c.commit()
@@ -943,7 +939,6 @@ def lgi_corps_search():
     q = request.args.get("q", "").strip()
     rows = []
 
-    # Only run search query if the user has typed a search term 'q'
     if q:
         c = db()
         sql_query = """
@@ -1070,7 +1065,6 @@ def health_ppa_dashboard():
     c = db()
     evaluate_health_ppa_compliance(c)
 
-    # Strictly isolate LGI Officers to their assigned LGA
     if u["role"] == "LGI Officer":
         lga_filter = u.get("lga", "").strip()
     else:
@@ -1167,7 +1161,6 @@ def health_ppa_export_excel():
     c = db()
     evaluate_health_ppa_compliance(c)
 
-    # Strictly isolate LGI Officers to their assigned LGA
     if u["role"] == "LGI Officer":
         lga_filter = u.get("lga", "").strip()
     else:
@@ -2761,7 +2754,6 @@ def monthly_clearance_edit_case(case_id):
             flash("State Code was not found in the Katsina Zone Corps Member directory.", "error")
             return redirect(url_for("monthly_clearance_case", case_id=case_id))
             
-        # PPA Lookup or Auto-Creation to guarantee reliable ppa_name and lga
         ppa_name = member["ppa_name"] or "Unassigned PPA"
         lga = member["lga"]
         
