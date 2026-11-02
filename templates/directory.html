@@ -1,3 +1,74 @@
 {% extends "base.html" %}
 {% block title %}Directory | KATZIMS{% endblock %}
-{% block content %}<style>.dir-wrap{max-width:1100px;margin:24px auto;padding:28px}.dir-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.dir-card{display:block;text-decoration:none;background:#fff;border:1px solid #dce7e1;border-radius:16px;padding:24px;color:#173d31}.dir-card h2{margin:0 0 8px}.dir-card p{margin:0;color:#60736b;line-height:1.5}.dir-icon{font-size:28px;margin-bottom:12px}@media(max-width:650px){.dir-wrap{margin:10px auto;padding:16px 14px}.dir-grid{grid-template-columns:1fr}}</style><section class="card dir-wrap"><h1>Directory</h1>{% if mode == 'lgi' %}<p>Choose what you want to search. Searches are restricted to your assigned LGA.</p><div class="dir-grid"><a class="dir-card" href="{{url_for('lgi_corps_search')}}"><div class="dir-icon">👤</div><h2>Search for Corps Member</h2><p>Search active Corps Members using State Code, name, phone, PPA or course.</p></a><a class="dir-card" href="{{url_for('next_of_kin_search')}}"><div class="dir-icon">👥</div><h2>Search for Next of Kin</h2><p>Search Next of Kin using the Corps Member's State Code.</p></a></div>{% else %}<p>Manage the zonal Corps Members Directory and Next of Kin records.</p><div class="dir-grid"><a class="dir-card" href="{{url_for('corps_members_import')}}"><div class="dir-icon">📥</div><h2>Import Corps Members</h2><p>Import or update the zonal Corps Members master list.</p></a><a class="dir-card" href="{{url_for('next_of_kin_import')}}"><div class="dir-icon">📥</div><h2>Import Next of Kin</h2><p>Import or update Next of Kin records by LGA and State Code.</p></a></div>{% endif %}</section>{% endblock %}
+{% block content %}
+<style>
+.dir-wrap { max-width: 1100px; margin: 24px auto; padding: 28px; }
+.dir-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.dir-card { display: block; text-decoration: none; background: #fff; border: 1px solid #dce7e1; border-radius: 16px; padding: 24px; color: #173d31; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.dir-card:hover { border-color: #07543f; box-shadow: 0 4px 12px rgba(7, 84, 63, 0.08); }
+.dir-card h2 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 600; color: #07543f; }
+.dir-card p { margin: 0; color: #60736b; line-height: 1.5; font-size: 0.95rem; }
+.dir-icon { font-size: 28px; margin-bottom: 12px; }
+@media (max-width: 650px) {
+  .dir-wrap { margin: 10px auto; padding: 16px 14px; }
+  .dir-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<section class="card dir-wrap">
+  <h1>Directory</h1>
+
+  {% if mode == 'lgi' %}
+    <p>Choose what you want to search. Directory searches are pre-filtered to your assigned LGA.</p>
+    
+    <div class="dir-grid">
+      <a class="dir-card" href="{{ url_for('lgi_corps_search') }}">
+        <div class="dir-icon">👤</div>
+        <h2>Search Corps Members</h2>
+        <p>Search active Corps Members by State Code, name, phone, PPA, or discipline.</p>
+      </a>
+
+      <a class="dir-card" href="{{ url_for('next_of_kin_search') }}">
+        <div class="dir-icon">👥</div>
+        <h2>Search Next of Kin</h2>
+        <p>Look up emergency and Next of Kin contact details using State Code.</p>
+      </a>
+
+      <a class="dir-card" href="{{ url_for('health_ppa_dashboard') }}">
+        <div class="dir-icon">🏥</div>
+        <h2>Health PPA Compliance</h2>
+        <p>Review health-related course PPA placements and provide LGI explanations.</p>
+      </a>
+    </div>
+
+  {% else %}
+    <p>Manage zonal Corps Member records, Next of Kin data, and PPA placement compliance.</p>
+
+    <div class="dir-grid">
+      <a class="dir-card" href="{{ url_for('lgi_corps_search') }}">
+        <div class="dir-icon">🔍</div>
+        <h2>Search Zonal Directory</h2>
+        <p>Search active Corps Members across all LGAs by State Code, name, phone, or PPA.</p>
+      </a>
+
+      <a class="dir-card" href="{{ url_for('health_ppa_dashboard') }}">
+        <div class="dir-icon">🏥</div>
+        <h2>Health PPA Compliance</h2>
+        <p>Monitor health-related course placement flags, import reviews, and export reports.</p>
+      </a>
+
+      <a class="dir-card" href="{{ url_for('corps_members_import') }}">
+        <div class="dir-icon">📥</div>
+        <h2>Import Corps Members</h2>
+        <p>Batch import or update the zonal Corps Members master list via CSV/XLSX.</p>
+      </a>
+
+      <a class="dir-card" href="{{ url_for('next_of_kin_import') }}">
+        <div class="dir-icon">📥</div>
+        <h2>Import Next of Kin</h2>
+        <p>Batch import or update Next of Kin records mapped by LGA and State Code.</p>
+      </a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
