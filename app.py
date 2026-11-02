@@ -2743,25 +2743,48 @@ def monthly_clearance_case(case_id):
 @app.route("/monthly-clearance/case/<int:case_id>/edit",methods=["POST"])
 @login_required
 def monthly_clearance_edit_case(case_id):
-    u=clearance_user()
-    if not u or u["role"] not in ("Administrator","Zonal Inspector"):
-        flash("Only ZI/Admin may edit a published case record.","error"); return redirect(url_for("monthly_clearance_home"))
+    u = clearance_user()
+    if not u or u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only ZI/Admin may edit a published case record.", "error")
+        return redirect(url_for("monthly_clearance_home"))
+    
     with db() as c:
-        m=c.execute("SELECT * FROM missed_clearance_records WHERE id=%s",(case_id,)).fetchone()
-        if not m:return redirect(url_for("monthly_clearance_home"))
-        old={"state_code":m["state_code"],"full_name":m["full_name"],"lga":m["lga"],"ppa_name":m["ppa_name"]}
-        new_code=request.form.get("state_code",m["state_code"]).strip().upper()
-        member=clearance_member_by_code(c,new_code)
+        m = c.execute("SELECT * FROM missed_clearance_records WHERE id=%s", (case_id,)).fetchone()
+        if not m:
+            return redirect(url_for("monthly_clearance_home"))
+            
+        old = {"state_code": m["state_code"], "full_name": m["full_name"], "lga": m["lga"], "ppa_name": m["ppa_name"]}
+        new_code = request.form.get("state_code", m["state_code"]).strip().upper()
+        
+        member = clearance_member_by_code(c, new_code)
         if not member or member["lga"] not in LGAS:
-            flash("State Code was not found in the Katsina Zone Corps Member directory.","error")
-            return redirect(url_for("monthly_clearance_case",case_id=case_id))
-        c.execute("""UPDATE missed_clearance_records SET corps_member_id=%s,state_code=%s,full_name=%s,lga=%s,ppa_name=%s,
-          updated_at=%s,updated_by=%s WHERE id=%s""",(member["id"],member["state_code"],member["full_name"],member["lga"],member["ppa_name"],now(),u["id"],case_id))
-        c.execute("UPDATE clearance_followups SET lga=%s,updated_at=%s WHERE case_id=%s",(member["lga"],now(),case_id))
-        new={"state_code":member["state_code"],"full_name":member["full_name"],"lga":member["lga"],"ppa_name":member["ppa_name"]}
-        clearance_audit(c,m["campaign_id"],case_id,u,"Published case record edited",old,new)
-    flash("Published case record updated; the change is in the audit history.","success")
-    return redirect(url_for("monthly_clearance_case",case_id=case_id))
+            flash("State Code was not found in the Katsina Zone Corps Member directory.", "error")
+            return redirect(url_for("monthly_clearance_case", case_id=case_id))
+            
+        # PPA Lookup or Auto-Creation to guarantee reliable ppa_name and lga
+        ppa_name = member["ppa_name"] or "Unassigned PPA"
+        lga = member["lga"]
+        
+        c.execute("""
+            INSERT INTO ppa_establishments (name, lga, active, created_by, created_at)
+            VALUES (%s, %s, 1, %s, %s)
+            ON CONFLICT (name, lga) DO NOTHING
+        """, (ppa_name, lga, u["full_name"], now()))
+        
+        c.execute("""
+            UPDATE missed_clearance_records 
+            SET corps_member_id=%s, state_code=%s, full_name=%s, lga=%s, ppa_name=%s,
+                updated_at=%s, updated_by=%s 
+            WHERE id=%s
+        """, (member["id"], member["state_code"], member["full_name"], lga, ppa_name, now(), u["id"], case_id))
+        
+        c.execute("UPDATE clearance_followups SET lga=%s, updated_at=%s WHERE case_id=%s", (lga, now(), case_id))
+        
+        new = {"state_code": member["state_code"], "full_name": member["full_name"], "lga": lga, "ppa_name": ppa_name}
+        clearance_audit(c, m["campaign_id"], case_id, u, "Published case record edited", old, new)
+        
+    flash("Published case record updated; the change is in the audit history.", "success")
+    return redirect(url_for("monthly_clearance_case", case_id=case_id))
 
 @app.route("/monthly-clearance/<int:campaign_id>/close",methods=["POST"])
 @login_required
