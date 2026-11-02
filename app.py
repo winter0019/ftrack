@@ -1146,6 +1146,87 @@ def health_ppa_update_review(state_code):
     flash(f"Review updated for {state_code}.", "success")
     return redirect(url_for("health_ppa_dashboard"))
 
+@app.route("/compliance/health-ppa/import", methods=["GET", "POST"])
+@login_required
+def health_ppa_import_reviews():
+    """Batch-import LGI explanations and verification statuses for flagged health PPA placements."""
+    u = current_user()
+    if u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only Administrators or Zonal Inspectors may batch-import PPA compliance reviews.", "error")
+        return redirect(url_for("health_ppa_dashboard"))
+
+    if request.method == "POST":
+        upload = request.files.get("review_file")
+        if not upload or not upload.filename:
+            flash("Please select a CSV or XLSX file to import.", "error")
+            return redirect(url_for("health_ppa_import_reviews"))
+
+        filename = upload.filename.lower()
+        if not (filename.endswith(".csv") or filename.endswith(".xlsx")):
+            flash("Unsupported file format. Upload a .csv or .xlsx file.", "error")
+            return redirect(url_for("health_ppa_import_reviews"))
+
+        try:
+            rows = _read_corps_upload(upload)
+        except Exception as exc:
+            flash(f"Error reading file: {exc}", "error")
+            return redirect(url_for("health_ppa_import_reviews"))
+
+        updated = 0
+        skipped = 0
+        error_logs = []
+        t = now()
+        c = db()
+
+        allowed_statuses = {"Flagged for Review", "Verified Compliant", "Non-Compliant / Action Required"}
+
+        for idx, row in enumerate(rows, start=2):
+            state_code = normalize_state_code(_pick(row, "state_code", "statecode", "state code", "code"))
+            explanation = _pick(row, "lgi_explanation", "explanation", "remarks", "lgi_remarks", "lgi explanation")
+            status = _pick(row, "status", "verification_status", "review_status", "verification status")
+
+            if not state_code:
+                skipped += 1
+                error_logs.append(f"Row {idx}: Missing State Code")
+                continue
+
+            # Default or map status if not explicitly valid
+            if not status or status not in allowed_statuses:
+                status_lower = status.lower() if status else ""
+                if "compliant" in status_lower or "verified" in status_lower or "ok" in status_lower:
+                    status = "Verified Compliant"
+                elif "non" in status_lower or "action" in status_lower or "flag" in status_lower:
+                    status = "Non-Compliant / Action Required"
+                else:
+                    status = "Flagged for Review"
+
+            res = c.execute("""
+                UPDATE health_ppa_compliance_reviews
+                SET lgi_explanation = COALESCE(NULLIF(%s, ''), lgi_explanation),
+                    status = %s,
+                    reviewed_by = %s,
+                    reviewed_at = %s,
+                    updated_at = %s
+                WHERE state_code = %s
+            """, (explanation, status, u["full_name"], t, t, state_code))
+
+            if res.rowcount > 0:
+                updated += 1
+            else:
+                skipped += 1
+                error_logs.append(f"Row {idx} ({state_code}): No active flag found matching State Code.")
+
+        c.commit()
+        c.close()
+
+        flash(f"Batch import completed: {updated} review(s) updated, {skipped} skipped.", "success" if updated > 0 else "error")
+        if error_logs:
+            flash(" | ".join(error_logs[:6]), "error")
+
+        return redirect(url_for("health_ppa_dashboard"))
+
+    return render_template("health_ppa_import.html")
+
 @app.route("/compliance/health-ppa/export.xlsx")
 @login_required
 def health_ppa_export_excel():
@@ -1166,6 +1247,8 @@ def health_ppa_export_excel():
     else:
         lga_filter = request.args.get("lga", "").strip()
 
+    status_filter = request.args.get("status", "").strip()
+
     sql_query = """
         SELECT r.*, cm.full_name AS corps_member_name, cm.phone
         FROM health_ppa_compliance_reviews r
@@ -1177,6 +1260,10 @@ def health_ppa_export_excel():
     if lga_filter and lga_filter in LGAS:
         sql_query += " AND r.lga = %s"
         params.append(lga_filter)
+
+    if status_filter:
+        sql_query += " AND r.status = %s"
+        params.append(status_filter)
 
     sql_query += " ORDER BY r.lga, cm.full_name"
     rows = c.execute(sql_query, tuple(params)).fetchall()
