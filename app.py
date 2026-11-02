@@ -98,7 +98,8 @@ def integrate_inspection_ui(response):
     return response
 
 def now():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Return local Lagos ISO timestamp string."""
+    return datetime.now(ZoneInfo("Africa/Lagos")).strftime("%Y-%m-%d %H:%M:%S")
 
 def init_db():
     """Create/upgrade the PostgreSQL schema used by KATZIMS."""
@@ -433,19 +434,15 @@ def evaluate_health_ppa_compliance(c):
     c.commit()
 
 def user_count():
-    c = db()
-    n = c.execute("SELECT COUNT(*) FROM users").fetchone()["count"]
-    c.close()
-    return n
+    with db() as c:
+        return c.execute("SELECT COUNT(*) FROM users").fetchone()["count"]
 
 def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
-    c = db()
-    u = c.execute("SELECT * FROM users WHERE id=%s AND active=1", (uid,)).fetchone()
-    c.close()
-    return u
+    with db() as c:
+        return c.execute("SELECT * FROM users WHERE id=%s AND active=1", (uid,)).fetchone()
 
 @app.context_processor
 def inject_user():
@@ -594,15 +591,19 @@ def next_file_id(c, state_code=None):
                 body = m.group(1)
                 if body.upper() == visible_suffix.upper():
                     highest = max(highest, int(m.group(2)))
-        return f"KTZO/FM/{datetime.now().strftime('%d%m%y')}/{visible_suffix}/{highest+1:03d}"
+        return f"KTZO/FM/{datetime.now(ZoneInfo('Africa/Lagos')).strftime('%d%m%y')}/{visible_suffix}/{highest+1:03d}"
     n = c.execute("SELECT COUNT(*) AS n FROM files").fetchone()["n"]
-    return f"KZO-FM-{datetime.now().year}-{n+1:04d}"
+    return f"KZO-FM-{datetime.now(ZoneInfo('Africa/Lagos')).year}-{n+1:04d}"
 
 def next_inspection_id():
-    c = db(); n = c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; c.close(); return f"KZO-INSP-{datetime.now().year}-{n+1:04d}"
+    with db() as c:
+        n = c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]
+    return f"KZO-INSP-{datetime.now(ZoneInfo('Africa/Lagos')).year}-{n+1:04d}"
 
 def next_report_id():
-    c = db(); n = c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]; c.close(); return f"KZO-RPT-{datetime.now().year}-{n+1:04d}"
+    with db() as c:
+        n = c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
+    return f"KZO-RPT-{datetime.now(ZoneInfo('Africa/Lagos')).year}-{n+1:04d}"
 
 def inspection_required(view):
     @wraps(view)
@@ -648,9 +649,8 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        c = db()
-        u = c.execute("SELECT * FROM users WHERE username=%s", (username,)).fetchone()
-        c.close()
+        with db() as c:
+            u = c.execute("SELECT * FROM users WHERE username=%s", (username,)).fetchone()
         if u and u["active"] and check_password_hash(u["password_hash"], password):
             session.clear()
             session["user_id"] = u["id"]
@@ -685,14 +685,13 @@ def setup():
         elif password != confirm:
             flash("Passwords do not match.", "error")
         else:
-            c = db()
-            c.execute("""INSERT INTO users
-                (full_name,username,password_hash,role,office,lga,active,created_at)
-                VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
-                (full_name, username, generate_password_hash(password),
-                 "Administrator", "Katsina Zonal Office", "", now()))
-            c.commit()
-            c.close()
+            with db() as c:
+                c.execute("""INSERT INTO users
+                    (full_name,username,password_hash,role,office,lga,active,created_at)
+                    VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
+                    (full_name, username, generate_password_hash(password),
+                     "Administrator", "Katsina Zonal Office", "", now()))
+                c.commit()
             flash("Administrator account created. Please log in.", "success")
             return redirect(url_for("login"))
     return render_template("setup.html")
@@ -726,66 +725,60 @@ def users():
         elif not valid_assignment:
             flash(assignment_error, "error")
         else:
-            c = db()
-            try:
-                c.execute("""INSERT INTO users
-                    (full_name,username,password_hash,role,office,lga,active,created_at)
-                    VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
-                    (full_name, username, generate_password_hash(password),
-                     role, office, lga, now()))
-                c.commit()
-                flash(f"{full_name} account created successfully.", "success")
-            except UniqueViolation:
-                flash("That username already exists.", "error")
-            finally:
-                c.close()
+            with db() as c:
+                try:
+                    c.execute("""INSERT INTO users
+                        (full_name,username,password_hash,role,office,lga,active,created_at)
+                        VALUES(%s,%s,%s,%s,%s,%s,1,%s)""",
+                        (full_name, username, generate_password_hash(password),
+                         role, office, lga, now()))
+                    c.commit()
+                    flash(f"{full_name} account created successfully.", "success")
+                except UniqueViolation:
+                    flash("That username already exists.", "error")
         return redirect(url_for("users"))
-    c = db()
-    rows = c.execute("SELECT * FROM users ORDER BY full_name").fetchall()
-    c.close()
+    with db() as c:
+        rows = c.execute("SELECT * FROM users ORDER BY full_name").fetchall()
     return render_template("users.html", users=rows, roles=ROLES, lgas=LGAS)
 
 @app.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
 @admin_required
 def edit_user(user_id):
-    c = db()
-    user = c.execute("SELECT * FROM users WHERE id=%s", (user_id,)).fetchone()
-    if not user:
-        c.close()
-        flash("Official account not found.", "error")
-        return redirect(url_for("users"))
-    if request.method == "POST":
-        full_name = request.form.get("full_name", "").strip()
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        role = request.form.get("role", "").strip()
-        office = request.form.get("office", "").strip()
-        lga = request.form.get("lga", "").strip()
-        valid_assignment, assignment_error = _validate_user_assignment(role, lga)
-        if not full_name or not username or role not in ROLES:
-            flash("Full name, username and valid role are required.", "error")
-        elif password and len(password) < 8:
-            flash("If changing the password, it must be at least 8 characters.", "error")
-        elif not valid_assignment:
-            flash(assignment_error, "error")
-        else:
-            try:
-                if password:
-                    c.execute("""UPDATE users SET full_name=%s, username=%s, password_hash=%s,
-                        role=%s, office=%s, lga=%s WHERE id=%s""",
-                        (full_name, username, generate_password_hash(password), role, office, lga, user_id))
-                else:
-                    c.execute("""UPDATE users SET full_name=%s, username=%s, role=%s,
-                        office=%s, lga=%s WHERE id=%s""",
-                        (full_name, username, role, office, lga, user_id))
-                c.commit()
-                flash(f"{full_name} account updated successfully.", "success")
-                c.close()
-                return redirect(url_for("users"))
-            except UniqueViolation:
-                c.rollback()
-                flash("That username already exists.", "error")
-    c.close()
+    with db() as c:
+        user = c.execute("SELECT * FROM users WHERE id=%s", (user_id,)).fetchone()
+        if not user:
+            flash("Official account not found.", "error")
+            return redirect(url_for("users"))
+        if request.method == "POST":
+            full_name = request.form.get("full_name", "").strip()
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            role = request.form.get("role", "").strip()
+            office = request.form.get("office", "").strip()
+            lga = request.form.get("lga", "").strip()
+            valid_assignment, assignment_error = _validate_user_assignment(role, lga)
+            if not full_name or not username or role not in ROLES:
+                flash("Full name, username and valid role are required.", "error")
+            elif password and len(password) < 8:
+                flash("If changing the password, it must be at least 8 characters.", "error")
+            elif not valid_assignment:
+                flash(assignment_error, "error")
+            else:
+                try:
+                    if password:
+                        c.execute("""UPDATE users SET full_name=%s, username=%s, password_hash=%s,
+                            role=%s, office=%s, lga=%s WHERE id=%s""",
+                            (full_name, username, generate_password_hash(password), role, office, lga, user_id))
+                    else:
+                        c.execute("""UPDATE users SET full_name=%s, username=%s, role=%s,
+                            office=%s, lga=%s WHERE id=%s""",
+                            (full_name, username, role, office, lga, user_id))
+                    c.commit()
+                    flash(f"{full_name} account updated successfully.", "success")
+                    return redirect(url_for("users"))
+                except UniqueViolation:
+                    c.rollback()
+                    flash("That username already exists.", "error")
     return render_template("user_edit.html", user=user, roles=ROLES, lgas=LGAS)
 
 @app.route("/users/<int:user_id>/toggle", methods=["POST"])
@@ -794,36 +787,35 @@ def toggle_user(user_id):
     if user_id == current_user()["id"]:
         flash("You cannot deactivate your own account.", "error")
         return redirect(url_for("users"))
-    c = db()
-    c.execute("UPDATE users SET active=CASE WHEN active=1 THEN 0 ELSE 1 END WHERE id=%s", (user_id,))
-    c.commit()
-    c.close()
+    with db() as c:
+        c.execute("UPDATE users SET active=CASE WHEN active=1 THEN 0 ELSE 1 END WHERE id=%s", (user_id,))
+        c.commit()
     flash("Account status updated.", "success")
     return redirect(url_for("users"))
 
 @app.route("/")
 @login_required
 def dashboard():
-    u = current_user(); c = db()
-    if u["role"] == "LGI Officer":
-        reports = c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC LIMIT 20", (u["lga"],)).fetchall()
-        reposting_updates = c.execute("""SELECT rn.id,rn.movement_type,rn.viewed,rm.state_code,rm.corps_member_name,rm.from_lga,rm.to_lga,rm.reposted_at
-            FROM reposting_notifications rn JOIN reposting_movements rm ON rm.id=rn.reposting_id
-            WHERE rn.lga=%s AND rm.published=1 ORDER BY rm.id DESC LIMIT 20""", (u["lga"],)).fetchall(); c.close()
-        return render_template("dashboard.html", lgi_reports=reports, reposting_updates=reposting_updates)
-    total = c.execute("SELECT COUNT(*) FROM files").fetchone()["count"]; received = c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()["count"]; forwarded = c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()["count"]; submitted = c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()["count"]; acknowledged = c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()["count"]; returned = c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()["count"]
-    stats = {"total": total, "received": received, "forwarded": forwarded, "submitted": submitted, "ack": acknowledged, "returned": returned, "Total": total, "Received": received, "Forwarded": forwarded, "Submitted": submitted, "Acknowledged": acknowledged, "Returned": returned}
-    branch_counts = {b: c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s", (b,)).fetchone()["count"] for b in BRANCHES}; branches = [(b, branch_counts[b]) for b in BRANCHES]
-    search_state_code = normalize_state_code(request.args.get("state_code", "")) if u["role"] in ("Administrator", "Zonal Inspector") else ""
-    search_results = []
-    if u["role"] in ("Administrator", "Zonal Inspector") and search_state_code:
-        search_results = c.execute("""SELECT * FROM files WHERE UPPER(COALESCE(state_code,''))=%s ORDER BY id DESC""", (search_state_code.upper(),)).fetchall()
-    recent = None if u["role"] in ("Administrator", "Zonal Inspector") else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
-    inspection_count = c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections = c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count = c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
-    my_inspections = 0
-    if u["role"] == "Supporting Staff":
-        my_inspections = c.execute("SELECT COUNT(*) FROM inspection_assignments WHERE supporting_staff_id=%s AND status='Active'", (u["id"],)).fetchone()["count"]
-    c.close()
+    u = current_user()
+    with db() as c:
+        if u["role"] == "LGI Officer":
+            reports = c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC LIMIT 20", (u["lga"],)).fetchall()
+            reposting_updates = c.execute("""SELECT rn.id,rn.movement_type,rn.viewed,rm.state_code,rm.corps_member_name,rm.from_lga,rm.to_lga,rm.reposted_at
+                FROM reposting_notifications rn JOIN reposting_movements rm ON rm.id=rn.reposting_id
+                WHERE rn.lga=%s AND rm.published=1 ORDER BY rm.id DESC LIMIT 20""", (u["lga"],)).fetchall()
+            return render_template("dashboard.html", lgi_reports=reports, reposting_updates=reposting_updates)
+        total = c.execute("SELECT COUNT(*) FROM files").fetchone()["count"]; received = c.execute("SELECT COUNT(*) FROM files WHERE status='Received'").fetchone()["count"]; forwarded = c.execute("SELECT COUNT(*) FROM files WHERE status='Forwarded'").fetchone()["count"]; submitted = c.execute("SELECT COUNT(*) FROM files WHERE status='Submitted'").fetchone()["count"]; acknowledged = c.execute("SELECT COUNT(*) FROM files WHERE status='Acknowledged'").fetchone()["count"]; returned = c.execute("SELECT COUNT(*) FROM files WHERE status='Returned'").fetchone()["count"]
+        stats = {"total": total, "received": received, "forwarded": forwarded, "submitted": submitted, "ack": acknowledged, "returned": returned, "Total": total, "Received": received, "Forwarded": forwarded, "Submitted": submitted, "Acknowledged": acknowledged, "Returned": returned}
+        branch_counts = {b: c.execute("SELECT COUNT(*) FROM files WHERE current_location=%s", (b,)).fetchone()["count"] for b in BRANCHES}; branches = [(b, branch_counts[b]) for b in BRANCHES]
+        search_state_code = normalize_state_code(request.args.get("state_code", "")) if u["role"] in ("Administrator", "Zonal Inspector") else ""
+        search_results = []
+        if u["role"] in ("Administrator", "Zonal Inspector") and search_state_code:
+            search_results = c.execute("""SELECT * FROM files WHERE UPPER(COALESCE(state_code,''))=%s ORDER BY id DESC""", (search_state_code.upper(),)).fetchall()
+        recent = None if u["role"] in ("Administrator", "Zonal Inspector") else c.execute("SELECT * FROM files ORDER BY id DESC LIMIT 8").fetchall()
+        inspection_count = c.execute("SELECT COUNT(*) FROM inspections").fetchone()["count"]; pending_inspections = c.execute("SELECT COUNT(*) FROM inspections WHERE status='Submitted to ZI'").fetchone()["count"]; report_count = c.execute("SELECT COUNT(*) FROM reports").fetchone()["count"]
+        my_inspections = 0
+        if u["role"] == "Supporting Staff":
+            my_inspections = c.execute("SELECT COUNT(*) FROM inspection_assignments WHERE supporting_staff_id=%s AND status='Active'", (u["id"],)).fetchone()["count"]
     return render_template("dashboard.html", stats=stats, branches=branches, branch_counts=branch_counts, recent=recent, inspection_count=inspection_count, pending_inspections=pending_inspections, report_count=report_count, my_inspections=my_inspections, search_state_code=search_state_code, search_results=search_results)
 
 @app.route("/files")
@@ -836,7 +828,6 @@ def files_page():
     q = request.args.get("q", "").strip()
     status = request.args.get("status", "").strip()
     branch = request.args.get("branch", "").strip()
-    c = db()
     sql_query = "SELECT * FROM files WHERE 1=1"; args = []
     if q:
         sql_query += """ AND (file_id LIKE %s OR title LIKE %s OR reference_no LIKE %s
@@ -847,8 +838,8 @@ def files_page():
     if branch:
         sql_query += " AND current_location=%s"; args.append(branch)
     sql_query += " ORDER BY id DESC"
-    rows = c.execute(sql_query, args).fetchall()
-    c.close()
+    with db() as c:
+        rows = c.execute(sql_query, args).fetchall()
     return render_template("files.html", rows=rows, q=q, status=status, branch=branch, branches=BRANCHES)
 
 @app.route("/lgi-send-file", methods=["GET", "POST"])
@@ -874,44 +865,41 @@ def lgi_send_file():
             flash("Invalid State Code. Use the NYSC format, e.g. KT/26A/1741.", "error")
             return redirect(url_for("lgi_send_file"))
         t = now(); attachment = None
-        c = db()
-        try:
-            if state_code:
-                existing = active_file_matches(c, state_code)
-                if existing:
-                    f = existing[0]
-                    flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.", "error")
-                    c.rollback()
-                    c.close()
-                    return redirect(url_for("lgi_send_file"))
-            fid = next_file_id(c, state_code); uploaded = request.files.get("attachment")
-            if uploaded and uploaded.filename:
-                attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
-                uploaded.save(os.path.join(UPLOADS, attachment))
-            c.execute("""INSERT INTO files
-                (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
-                 description,attachment,status,current_location,created_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (fid, title, request.form.get("reference_no"), state_code, "Katsina Zonal Office", assigned_lga,
-                 u["full_name"], u["full_name"], t, request.form.get("priority", "Normal"),
-                 request.form.get("remarks") or request.form.get("description"), attachment,
-                 "Submitted", "Katsina Zonal Office", t))
-            c.execute("""INSERT INTO movements
-                (file_id,from_location,to_location,forwarded_by,receiving_officer,action,
-                 forwarded_at,status,remarks,submitted_by,submitted_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (fid, assigned_lga, "Katsina Zonal Office", u["full_name"], "Zonal Inspector",
-                 "LGI FILE SUBMISSION", t, "Submitted", request.form.get("remarks"), u["full_name"], t))
-            c.execute("""INSERT INTO audit_logs
-                (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-                (fid, "FILE SUBMITTED BY LGI", u["full_name"],
-                 f"Submitted from assigned LGA: {assigned_lga} to Katsina Zonal Office", t))
-            c.commit()
-        except Exception:
-            c.rollback()
-            raise
-        finally:
-            c.close()
+        with db() as c:
+            try:
+                if state_code:
+                    existing = active_file_matches(c, state_code)
+                    if existing:
+                        f = existing[0]
+                        flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.", "error")
+                        c.rollback()
+                        return redirect(url_for("lgi_send_file"))
+                fid = next_file_id(c, state_code); uploaded = request.files.get("attachment")
+                if uploaded and uploaded.filename:
+                    attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
+                    uploaded.save(os.path.join(UPLOADS, attachment))
+                c.execute("""INSERT INTO files
+                    (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
+                     description,attachment,status,current_location,created_at)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (fid, title, request.form.get("reference_no"), state_code, "Katsina Zonal Office", assigned_lga,
+                     u["full_name"], u["full_name"], t, request.form.get("priority", "Normal"),
+                     request.form.get("remarks") or request.form.get("description"), attachment,
+                     "Submitted", "Katsina Zonal Office", t))
+                c.execute("""INSERT INTO movements
+                    (file_id,from_location,to_location,forwarded_by,receiving_officer,action,
+                     forwarded_at,status,remarks,submitted_by,submitted_at)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (fid, assigned_lga, "Katsina Zonal Office", u["full_name"], "Zonal Inspector",
+                     "LGI FILE SUBMISSION", t, "Submitted", request.form.get("remarks"), u["full_name"], t))
+                c.execute("""INSERT INTO audit_logs
+                    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+                    (fid, "FILE SUBMITTED BY LGI", u["full_name"],
+                     f"Submitted from assigned LGA: {assigned_lga} to Katsina Zonal Office", t))
+                c.commit()
+            except Exception:
+                c.rollback()
+                raise
         flash(f"{fid} submitted to the Zonal Office successfully.", "success")
         return redirect(url_for("dashboard"))
 
@@ -930,7 +918,6 @@ def lgi_file_status():
         flash("Your account has no valid assigned LGA. Contact the Administrator.", "error")
         return redirect(url_for("dashboard"))
     q = request.args.get("q", "").strip()
-    c = db()
     params = [assigned_lga, u["full_name"]]
     sql_query = """
         SELECT f.file_id,f.title,f.reference_no,f.lga,f.status,f.current_location,
@@ -950,8 +937,8 @@ def lgi_file_status():
         sql_query += " AND (f.file_id ILIKE %s OR f.title ILIKE %s OR COALESCE(f.reference_no,'') ILIKE %s OR f.status ILIKE %s)"
         params.extend([like, like, like, like])
     sql_query += " ORDER BY f.id DESC LIMIT 500"
-    rows = c.execute(sql_query, tuple(params)).fetchall()
-    c.close()
+    with db() as c:
+        rows = c.execute(sql_query, tuple(params)).fetchall()
     return render_template("lgi_file_status.html", rows=rows, q=q, assigned_lga=assigned_lga)
 
 @app.route("/compliance/health-ppa")
@@ -963,46 +950,45 @@ def health_ppa_dashboard():
         flash("Access to PPA Compliance Monitor is restricted.", "error")
         return redirect(url_for("dashboard"))
 
-    c = db()
-    evaluate_health_ppa_compliance(c)
+    with db() as c:
+        evaluate_health_ppa_compliance(c)
 
-    if u["role"] == "LGI Officer":
-        lga_filter = u.get("lga", "").strip()
-    else:
-        lga_filter = request.args.get("lga", "").strip()
+        if u["role"] == "LGI Officer":
+            lga_filter = u.get("lga", "").strip()
+        else:
+            lga_filter = request.args.get("lga", "").strip()
 
-    status_filter = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
+        status_filter = request.args.get("status", "").strip()
+        q = request.args.get("q", "").strip()
 
-    sql_query = """
-        SELECT r.*, cm.full_name AS corps_member_name, cm.phone
-        FROM health_ppa_compliance_reviews r
-        JOIN corps_members cm ON cm.state_code = r.state_code
-        WHERE 1=1
-    """
-    params = []
+        sql_query = """
+            SELECT r.*, cm.full_name AS corps_member_name, cm.phone
+            FROM health_ppa_compliance_reviews r
+            JOIN corps_members cm ON cm.state_code = r.state_code
+            WHERE 1=1
+        """
+        params = []
 
-    if lga_filter and lga_filter in LGAS:
-        sql_query += " AND r.lga = %s"
-        params.append(lga_filter)
+        if lga_filter and lga_filter in LGAS:
+            sql_query += " AND r.lga = %s"
+            params.append(lga_filter)
 
-    if status_filter:
-        sql_query += " AND r.status = %s"
-        params.append(status_filter)
+        if status_filter:
+            sql_query += " AND r.status = %s"
+            params.append(status_filter)
 
-    if q:
-        like = f"%{q}%"
-        sql_query += """ AND (
-            r.state_code ILIKE %s OR 
-            cm.full_name ILIKE %s OR 
-            r.course ILIKE %s OR 
-            r.ppa_name ILIKE %s
-        )"""
-        params.extend([like, like, like, like])
+        if q:
+            like = f"%{q}%"
+            sql_query += """ AND (
+                r.state_code ILIKE %s OR 
+                cm.full_name ILIKE %s OR 
+                r.course ILIKE %s OR 
+                r.ppa_name ILIKE %s
+            )"""
+            params.extend([like, like, like, like])
 
-    sql_query += " ORDER BY r.status DESC, r.lga ASC, cm.full_name ASC"
-    rows = c.execute(sql_query, tuple(params)).fetchall()
-    c.close()
+        sql_query += " ORDER BY r.status DESC, r.lga ASC, cm.full_name ASC"
+        rows = c.execute(sql_query, tuple(params)).fetchall()
 
     return render_template(
         "health_ppa_dashboard.html",
@@ -1031,18 +1017,17 @@ def health_ppa_update_review(state_code):
         flash("Invalid status choice.", "error")
         return redirect(url_for("health_ppa_dashboard"))
 
-    c = db()
-    c.execute("""
-        UPDATE health_ppa_compliance_reviews
-        SET lgi_explanation = %s,
-            status = %s,
-            reviewed_by = %s,
-            reviewed_at = %s,
-            updated_at = %s
-        WHERE state_code = %s
-    """, (explanation, status, u["full_name"], now(), now(), state_code))
-    c.commit()
-    c.close()
+    with db() as c:
+        c.execute("""
+            UPDATE health_ppa_compliance_reviews
+            SET lgi_explanation = %s,
+                status = %s,
+                reviewed_by = %s,
+                reviewed_at = %s,
+                updated_at = %s
+            WHERE state_code = %s
+        """, (explanation, status, u["full_name"], now(), now(), state_code))
+        c.commit()
 
     flash(f"Review updated for {state_code}.", "success")
     return redirect(url_for("health_ppa_dashboard"))
@@ -1077,48 +1062,46 @@ def health_ppa_import_reviews():
         skipped = 0
         error_logs = []
         t = now()
-        c = db()
 
         allowed_statuses = {"Flagged for Review", "Verified Compliant", "Non-Compliant / Action Required"}
 
-        for idx, row in enumerate(rows, start=2):
-            state_code = normalize_state_code(_pick(row, "state_code", "statecode", "state code", "code"))
-            explanation = _pick(row, "lgi_explanation", "explanation", "remarks", "lgi_remarks", "lgi explanation")
-            status = _pick(row, "status", "verification_status", "review_status", "verification status")
+        with db() as c:
+            for idx, row in enumerate(rows, start=2):
+                state_code = normalize_state_code(_pick(row, "state_code", "statecode", "state code", "code"))
+                explanation = _pick(row, "lgi_explanation", "explanation", "remarks", "lgi_remarks", "lgi explanation")
+                status = _pick(row, "status", "verification_status", "review_status", "verification status")
 
-            if not state_code:
-                skipped += 1
-                error_logs.append(f"Row {idx}: Missing State Code")
-                continue
+                if not state_code:
+                    skipped += 1
+                    error_logs.append(f"Row {idx}: Missing State Code")
+                    continue
 
-            # Default or map status if not explicitly valid
-            if not status or status not in allowed_statuses:
-                status_lower = status.lower() if status else ""
-                if "compliant" in status_lower or "verified" in status_lower or "ok" in status_lower:
-                    status = "Verified Compliant"
-                elif "non" in status_lower or "action" in status_lower or "flag" in status_lower:
-                    status = "Non-Compliant / Action Required"
+                if not status or status not in allowed_statuses:
+                    status_lower = status.lower() if status else ""
+                    if "compliant" in status_lower or "verified" in status_lower or "ok" in status_lower:
+                        status = "Verified Compliant"
+                    elif "non" in status_lower or "action" in status_lower or "flag" in status_lower:
+                        status = "Non-Compliant / Action Required"
+                    else:
+                        status = "Flagged for Review"
+
+                res = c.execute("""
+                    UPDATE health_ppa_compliance_reviews
+                    SET lgi_explanation = COALESCE(NULLIF(%s, ''), lgi_explanation),
+                        status = %s,
+                        reviewed_by = %s,
+                        reviewed_at = %s,
+                        updated_at = %s
+                    WHERE state_code = %s
+                """, (explanation, status, u["full_name"], t, t, state_code))
+
+                if res.rowcount > 0:
+                    updated += 1
                 else:
-                    status = "Flagged for Review"
+                    skipped += 1
+                    error_logs.append(f"Row {idx} ({state_code}): No active flag found matching State Code.")
 
-            res = c.execute("""
-                UPDATE health_ppa_compliance_reviews
-                SET lgi_explanation = COALESCE(NULLIF(%s, ''), lgi_explanation),
-                    status = %s,
-                    reviewed_by = %s,
-                    reviewed_at = %s,
-                    updated_at = %s
-                WHERE state_code = %s
-            """, (explanation, status, u["full_name"], t, t, state_code))
-
-            if res.rowcount > 0:
-                updated += 1
-            else:
-                skipped += 1
-                error_logs.append(f"Row {idx} ({state_code}): No active flag found matching State Code.")
-
-        c.commit()
-        c.close()
+            c.commit()
 
         flash(f"Batch import completed: {updated} review(s) updated, {skipped} skipped.", "success" if updated > 0 else "error")
         if error_logs:
@@ -1137,38 +1120,37 @@ def health_ppa_export_excel():
         return "Unauthorized", 403
 
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    c = db()
-    evaluate_health_ppa_compliance(c)
+    with db() as c:
+        evaluate_health_ppa_compliance(c)
 
-    if u["role"] == "LGI Officer":
-        lga_filter = u.get("lga", "").strip()
-    else:
-        lga_filter = request.args.get("lga", "").strip()
+        if u["role"] == "LGI Officer":
+            lga_filter = u.get("lga", "").strip()
+        else:
+            lga_filter = request.args.get("lga", "").strip()
 
-    status_filter = request.args.get("status", "").strip()
+        status_filter = request.args.get("status", "").strip()
 
-    sql_query = """
-        SELECT r.*, cm.full_name AS corps_member_name, cm.phone
-        FROM health_ppa_compliance_reviews r
-        JOIN corps_members cm ON cm.state_code = r.state_code
-        WHERE 1=1
-    """
-    params = []
+        sql_query = """
+            SELECT r.*, cm.full_name AS corps_member_name, cm.phone
+            FROM health_ppa_compliance_reviews r
+            JOIN corps_members cm ON cm.state_code = r.state_code
+            WHERE 1=1
+        """
+        params = []
 
-    if lga_filter and lga_filter in LGAS:
-        sql_query += " AND r.lga = %s"
-        params.append(lga_filter)
+        if lga_filter and lga_filter in LGAS:
+            sql_query += " AND r.lga = %s"
+            params.append(lga_filter)
 
-    if status_filter:
-        sql_query += " AND r.status = %s"
-        params.append(status_filter)
+        if status_filter:
+            sql_query += " AND r.status = %s"
+            params.append(status_filter)
 
-    sql_query += " ORDER BY r.lga, cm.full_name"
-    rows = c.execute(sql_query, tuple(params)).fetchall()
-    c.close()
+        sql_query += " ORDER BY r.lga, cm.full_name"
+        rows = c.execute(sql_query, tuple(params)).fetchall()
 
     wb = Workbook()
     ws = wb.active
@@ -1209,8 +1191,112 @@ def health_ppa_export_excel():
     wb.save(out)
     out.seek(0)
 
-    filename = f"KATZIMS_Health_PPA_Compliance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"KATZIMS_Health_PPA_Compliance_{datetime.now(ZoneInfo('Africa/Lagos')).strftime('%Y%m%d_%H%M%S')}.xlsx"
     return send_file(out, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@app.route("/lgi-corps-search")
+@login_required
+def lgi_corps_search():
+    """Allow LGI Officers, Zonal Inspectors, and Administrators to search active Corps Members across ALL LGAs."""
+    u = current_user()
+    role = u["role"]
+    
+    if role not in ("LGI Officer", "Administrator", "Zonal Inspector"):
+        flash("The corps member directory is available to LGI Officers, Zonal Inspectors, and Administrators only.", "error")
+        return redirect(url_for("dashboard"))
+
+    assigned_lga = (u.get("lga") or "").strip()
+    selected_lga = request.args.get("lga", "").strip()
+    
+    active_lga = selected_lga if selected_lga in LGAS else ""
+
+    q = request.args.get("q", "").strip()
+    rows = []
+
+    if q:
+        sql_query = """
+            SELECT cm.state_code, cm.full_name, cm.gender, cm.discipline, 
+                   cm.batch, cm.stream, cm.phone, cm.status, 
+                   p.name AS ppa_name, p.lga
+            FROM corps_members cm
+            JOIN ppa_establishments p ON p.id = cm.ppa_id
+            WHERE COALESCE(cm.status, 'Active') ILIKE 'Active'
+        """
+        params = []
+        
+        if active_lga:
+            sql_query += " AND p.lga = %s"
+            params.append(active_lga)
+            
+        like = f"%{q}%"
+        clean_digits = re.sub(r"\D", "", q).lstrip("0")
+        
+        norm_code = normalize_state_code(q)
+        norm_code_like = f"%{norm_code}%" if norm_code else like
+
+        if clean_digits and len(clean_digits) >= 5:
+            phone_like = f"%{clean_digits}%"
+            sql_query += """ AND (
+                cm.state_code ILIKE %s OR 
+                UPPER(REPLACE(cm.state_code, '/', '')) ILIKE %s OR
+                cm.full_name ILIKE %s OR 
+                COALESCE(cm.phone, '') ILIKE %s OR 
+                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
+                COALESCE(cm.discipline, '') ILIKE %s OR 
+                p.name ILIKE %s
+            )"""
+            params.extend([like, norm_code_like, like, like, phone_like, like, like])
+        else:
+            sql_query += """ AND (
+                cm.state_code ILIKE %s OR 
+                UPPER(REPLACE(cm.state_code, '/', '')) ILIKE %s OR
+                cm.full_name ILIKE %s OR 
+                COALESCE(cm.phone, '') ILIKE %s OR 
+                COALESCE(cm.discipline, '') ILIKE %s OR 
+                p.name ILIKE %s
+            )"""
+            params.extend([like, norm_code_like, like, like, like, like])
+            
+        sql_query += " ORDER BY cm.full_name ASC LIMIT 250"
+        
+        with db() as c:
+            rows = c.execute(sql_query, tuple(params)).fetchall()
+
+    return render_template(
+        "lgi_corps_search.html",
+        q=q,
+        rows=rows,
+        lgas=LGAS,
+        assigned_lga=assigned_lga,
+        selected_lga=active_lga
+    )
+
+@app.route("/lgi-corps/<path:state_code>")
+@login_required
+def lgi_corps_detail(state_code):
+    """Show a Corps Member record to any LGI Officer, Zonal Inspector, or Administrator, regardless of LGA assignment."""
+    u = current_user()
+    if u["role"] not in ("LGI Officer", "Administrator", "Zonal Inspector"):
+        flash("The corps member directory is restricted.", "error")
+        return redirect(url_for("dashboard"))
+        
+    assigned_lga = (u.get("lga") or "").strip()
+    norm_code = normalize_state_code(state_code)
+    
+    with db() as c:
+        row = c.execute("""
+            SELECT cm.state_code, cm.full_name, cm.gender, cm.discipline, cm.batch, cm.stream,
+                   cm.phone, cm.status, cm.created_at, cm.updated_at, p.name AS ppa_name, p.lga
+            FROM corps_members cm 
+            JOIN ppa_establishments p ON p.id = cm.ppa_id
+            WHERE cm.state_code = %s OR UPPER(REPLACE(cm.state_code, '/', '')) = %s
+        """, (state_code, norm_code)).fetchone()
+
+    if not row:
+        flash("Corps Member record not found.", "error")
+        return redirect(url_for("lgi_corps_search"))
+
+    return render_template("lgi_corps_detail.html", r=row, assigned_lga=assigned_lga)
 
 @app.route("/receive", methods=["GET", "POST"])
 @registry_required
@@ -1224,37 +1310,35 @@ def receive():
         if state_code and not valid_state_code(state_code):
             flash("Invalid State Code. Use the NYSC format, e.g. KT/26A/1741.", "error")
             return redirect(url_for("receive"))
-        t = now(); official = official_name(); c = db()
-        try:
-            if state_code:
-                existing = active_file_matches(c, state_code)
-                if existing:
-                    f = existing[0]
-                    flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.", "error")
-                    c.rollback()
-                    c.close()
-                    return redirect(url_for("receive"))
-            fid = next_file_id(c, state_code); attachment = None
-            uploaded = request.files.get("attachment")
-            if uploaded and uploaded.filename:
-                attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
-                uploaded.save(os.path.join(UPLOADS, attachment))
-            c.execute("""INSERT INTO files
-            (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
-             description,attachment,status,current_location,created_at)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (fid, title, request.form.get("reference_no"), state_code, "Katsina Zonal Office", request.form["lga"],
-             request.form.get("lgi_name"), official, t, request.form.get("priority", "Normal"),
-             request.form.get("description"), attachment, "Received", "Katsina Zonal Office", t))
-            c.execute("""INSERT INTO audit_logs
-            (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-            (fid, "FILE RECEIVED", official, "Received from " + request.form["lga"], t))
-            c.commit()
-        except Exception:
-            c.rollback()
-            raise
-        finally:
-            c.close()
+        t = now(); official = official_name()
+        with db() as c:
+            try:
+                if state_code:
+                    existing = active_file_matches(c, state_code)
+                    if existing:
+                        f = existing[0]
+                        flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.", "error")
+                        c.rollback()
+                        return redirect(url_for("receive"))
+                fid = next_file_id(c, state_code); attachment = None
+                uploaded = request.files.get("attachment")
+                if uploaded and uploaded.filename:
+                    attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
+                    uploaded.save(os.path.join(UPLOADS, attachment))
+                c.execute("""INSERT INTO files
+                (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
+                 description,attachment,status,current_location,created_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (fid, title, request.form.get("reference_no"), state_code, "Katsina Zonal Office", request.form["lga"],
+                 request.form.get("lgi_name"), official, t, request.form.get("priority", "Normal"),
+                 request.form.get("description"), attachment, "Received", "Katsina Zonal Office", t))
+                c.execute("""INSERT INTO audit_logs
+                (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+                (fid, "FILE RECEIVED", official, "Received from " + request.form["lga"], t))
+                c.commit()
+            except Exception:
+                c.rollback()
+                raise
         flash(fid + " registered successfully.", "success")
 
         if current_user()["role"] == "Supporting Staff":
@@ -1274,16 +1358,15 @@ def supporting_file_search():
     q = request.args.get("q", "").strip()
     rows = []
     if q:
-        c = db()
-        rows = c.execute("""
-            SELECT file_id,title,reference_no,lga,priority,status,
-                   description,attachment
-            FROM files
-            WHERE file_id ILIKE %s
-               OR reference_no ILIKE %s
-            ORDER BY id DESC
-        """, (f"%{q}%", f"%{q}%")).fetchall()
-        c.close()
+        with db() as c:
+            rows = c.execute("""
+                SELECT file_id,title,reference_no,lga,priority,status,
+                       description,attachment
+                FROM files
+                WHERE file_id ILIKE %s
+                   OR reference_no ILIKE %s
+                ORDER BY id DESC
+            """, (f"%{q}%", f"%{q}%")).fetchall()
 
     return render_template("supporting_file_search.html", rows=rows, q=q)
 
@@ -1295,14 +1378,13 @@ def supporting_file_view(file_id):
         flash("This page is available to Supporting Staff only.", "error")
         return redirect(url_for("dashboard"))
 
-    c = db()
-    f = c.execute("""
-        SELECT file_id,title,reference_no,lga,priority,status,
-               description,attachment
-        FROM files
-        WHERE file_id=%s
-    """, (file_id,)).fetchone()
-    c.close()
+    with db() as c:
+        f = c.execute("""
+            SELECT file_id,title,reference_no,lga,priority,status,
+                   description,attachment
+            FROM files
+            WHERE file_id=%s
+        """, (file_id,)).fetchone()
 
     if not f:
         flash("File not found.", "error")
@@ -1317,73 +1399,75 @@ def detail(file_id):
     if current_user()["role"] == "Supporting Staff":
         return redirect(url_for("supporting_file_view", file_id=file_id))
 
-    c = db()
-    f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
-    if not f:
-        c.close(); return "File not found", 404
-    movements = c.execute("SELECT * FROM movements WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
-    audit = c.execute("SELECT * FROM audit_logs WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
-    c.close()
+    with db() as c:
+        f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
+        if not f:
+            return "File not found", 404
+        movements = c.execute("SELECT * FROM movements WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
+        audit = c.execute("SELECT * FROM audit_logs WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
     return render_template("detail.html", f=f, movements=movements, audit=audit, branches=BRANCHES)
 
 @app.route("/forward/<path:file_id>", methods=["POST"])
 @movement_required
 def forward(file_id):
-    t = now(); c = db()
-    f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
-    if not f:
-        c.close(); return "File not found", 404
-    official = official_name(); to = request.form["to_location"]
-    c.execute("""INSERT INTO movements
-    (file_id,from_location,to_location,forwarded_by,receiving_officer,
-     action,forwarded_at,status,remarks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-    (file_id, f["current_location"], to, official, request.form.get("receiving_officer"),
-     request.form.get("action"), t, "Forwarded", request.form.get("remarks")))
-    c.execute("UPDATE files SET current_location=%s,status='Forwarded' WHERE file_id=%s", (to, file_id))
-    c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-    (file_id, "FILE FORWARDED", official, f"{f['current_location']} → {to}", t))
-    c.commit(); c.close()
+    t = now()
+    with db() as c:
+        f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
+        if not f:
+            return "File not found", 404
+        official = official_name(); to = request.form["to_location"]
+        c.execute("""INSERT INTO movements
+        (file_id,from_location,to_location,forwarded_by,receiving_officer,
+         action,forwarded_at,status,remarks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (file_id, f["current_location"], to, official, request.form.get("receiving_officer"),
+         request.form.get("action"), t, "Forwarded", request.form.get("remarks")))
+        c.execute("UPDATE files SET current_location=%s,status='Forwarded' WHERE file_id=%s", (to, file_id))
+        c.execute("""INSERT INTO audit_logs
+        (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+        (file_id, "FILE FORWARDED", official, f"{f['current_location']} → {to}", t))
+        c.commit()
     flash(f"{file_id} forwarded to {to}.", "success")
     return redirect(url_for("detail", file_id=file_id))
 
 @app.route("/ack/<path:file_id>", methods=["POST"])
 @supporting_staff_required
 def acknowledge(file_id):
-    t = now(); official = official_name(); c = db()
-    m = c.execute("""SELECT * FROM movements WHERE file_id=%s AND status='Forwarded'
-                   ORDER BY id DESC LIMIT 1""", (file_id,)).fetchone()
-    if not m:
-        c.close(); flash("No pending forwarded file is awaiting physical-submission confirmation.", "error")
-        return redirect(url_for("supporting_file_view", file_id=file_id))
-    c.execute("""UPDATE movements SET status='Submitted', submitted_at=%s, submitted_by=%s,
-                 acknowledged_at=%s WHERE id=%s""", (t, official, t, m["id"]))
-    c.execute("UPDATE files SET status='Submitted' WHERE file_id=%s", (file_id,))
-    c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-    (file_id, "PHYSICAL FILE SUBMITTED", official, f"Physical file submitted to {m['to_location']}", t))
-    c.commit(); c.close()
+    t = now(); official = official_name()
+    with db() as c:
+        m = c.execute("""SELECT * FROM movements WHERE file_id=%s AND status='Forwarded'
+                       ORDER BY id DESC LIMIT 1""", (file_id,)).fetchone()
+        if not m:
+            flash("No pending forwarded file is awaiting physical-submission confirmation.", "error")
+            return redirect(url_for("supporting_file_view", file_id=file_id))
+        c.execute("""UPDATE movements SET status='Submitted', submitted_at=%s, submitted_by=%s,
+                     acknowledged_at=%s WHERE id=%s""", (t, official, t, m["id"]))
+        c.execute("UPDATE files SET status='Submitted' WHERE file_id=%s", (file_id,))
+        c.execute("""INSERT INTO audit_logs
+        (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+        (file_id, "PHYSICAL FILE SUBMITTED", official, f"Physical file submitted to {m['to_location']}", t))
+        c.commit()
     flash(f"Physical submission of {file_id} to {m['to_location']} confirmed.", "success")
     return redirect(url_for("supporting_file_view", file_id=file_id))
 
 @app.route("/return/<path:file_id>", methods=["POST"])
 @movement_required
 def return_file(file_id):
-    t = now(); official = official_name(); c = db()
-    f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
-    if not f:
-        c.close(); return "File not found", 404
-    c.execute("""UPDATE files SET current_location='Katsina Zonal Office',
-                 status='Returned' WHERE file_id=%s""", (file_id,))
-    c.execute("""INSERT INTO movements
-    (file_id,from_location,to_location,forwarded_by,action,forwarded_at,status,remarks)
-    VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
-    (file_id, f["current_location"], "Katsina Zonal Office", official,
-     "Returned", t, "Returned", request.form.get("remarks")))
-    c.execute("""INSERT INTO audit_logs
-    (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
-    (file_id, "FILE RETURNED", official, request.form.get("remarks") or "Returned to Zonal Office", t))
-    c.commit(); c.close()
+    t = now(); official = official_name()
+    with db() as c:
+        f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
+        if not f:
+            return "File not found", 404
+        c.execute("""UPDATE files SET current_location='Katsina Zonal Office',
+                     status='Returned' WHERE file_id=%s""", (file_id,))
+        c.execute("""INSERT INTO movements
+        (file_id,from_location,to_location,forwarded_by,action,forwarded_at,status,remarks)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (file_id, f["current_location"], "Katsina Zonal Office", official,
+         "Returned", t, "Returned", request.form.get("remarks")))
+        c.execute("""INSERT INTO audit_logs
+        (file_id,action,official,details,created_at) VALUES(%s,%s,%s,%s,%s)""",
+        (file_id, "FILE RETURNED", official, request.form.get("remarks") or "Returned to Zonal Office", t))
+        c.commit()
     flash("File returned to Zonal Office.", "success")
     return redirect(url_for("detail", file_id=file_id))
 
@@ -1391,18 +1475,19 @@ def return_file(file_id):
 @movement_required
 def put_away(file_id):
     """Close/archive a completed file so a future file can be registered for the same Corps Member."""
-    t = now(); official = official_name(); c = db()
-    f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
-    if not f:
-        c.close(); return "File not found", 404
-    if (f["status"] or "").strip().lower() == "put away":
-        c.close(); flash("This file has already been Put Away.", "error"); return redirect(url_for("detail", file_id=file_id))
-    if (f["status"] or "").strip().lower() == "forwarded":
-        c.close(); flash("A file awaiting physical submission cannot be Put Away. Confirm delivery or return the file first.", "error"); return redirect(url_for("detail", file_id=file_id))
-    c.execute("UPDATE files SET status='Put Away', put_away_by=%s, put_away_at=%s WHERE file_id=%s", (official, t, file_id))
-    c.execute("""INSERT INTO audit_logs(file_id,action,official,details,created_at)
-                 VALUES(%s,%s,%s,%s,%s)""", (file_id, "FILE PUT AWAY", official, "File closed and placed in records/archive. A new active file may now be registered for the same State Code.", t))
-    c.commit(); c.close()
+    t = now(); official = official_name()
+    with db() as c:
+        f = c.execute("SELECT * FROM files WHERE file_id=%s", (file_id,)).fetchone()
+        if not f:
+            return "File not found", 404
+        if (f["status"] or "").strip().lower() == "put away":
+            flash("This file has already been Put Away.", "error"); return redirect(url_for("detail", file_id=file_id))
+        if (f["status"] or "").strip().lower() == "forwarded":
+            flash("A file awaiting physical submission cannot be Put Away. Confirm delivery or return the file first.", "error"); return redirect(url_for("detail", file_id=file_id))
+        c.execute("UPDATE files SET status='Put Away', put_away_by=%s, put_away_at=%s WHERE file_id=%s", (official, t, file_id))
+        c.execute("""INSERT INTO audit_logs(file_id,action,official,details,created_at)
+                     VALUES(%s,%s,%s,%s,%s)""", (file_id, "FILE PUT AWAY", official, "File closed and placed in records/archive. A new active file may now be registered for the same State Code.", t))
+        c.commit()
     flash(f"{file_id} has been Put Away successfully.", "success")
     return redirect(url_for("detail", file_id=file_id))
 
@@ -1528,42 +1613,41 @@ def _pick(row, *names):
     return ""
 
 def next_new_inspection_id():
-    c = db(); n = c.execute("SELECT COUNT(*) FROM inspection_records").fetchone()["count"]; c.close()
-    return f"KZO-INSP-{datetime.now().year}-{n+1:04d}"
+    with db() as c:
+        n = c.execute("SELECT COUNT(*) FROM inspection_records").fetchone()["count"]
+    return f"KZO-INSP-{datetime.now(ZoneInfo('Africa/Lagos')).year}-{n+1:04d}"
 
 @app.route("/inspections")
 @login_required
 def inspections():
     u = current_user()
     if u["role"] in ("Administrator", "Zonal Inspector"):
-        c = db()
-        ppas = c.execute("""SELECT p.*, COUNT(cm.id) AS corps_count,
-                    (SELECT COUNT(*) FROM inspection_assignments ia WHERE ia.ppa_id=p.id AND ia.status='Active') AS assigned
-                    FROM ppa_establishments p LEFT JOIN corps_members cm ON cm.ppa_id=p.id
-                    WHERE p.active=1 GROUP BY p.id ORDER BY p.lga,p.name""").fetchall()
-        assignments = c.execute("""SELECT ia.*,p.name AS ppa_name,p.lga,u.full_name AS staff_name
-                    FROM inspection_assignments ia JOIN ppa_establishments p ON p.id=ia.ppa_id
-                    JOIN users u ON u.id=ia.supporting_staff_id
-                    WHERE ia.status='Active' ORDER BY p.lga,p.name""").fetchall()
-        staff = c.execute("SELECT id,full_name,username FROM users WHERE role='Supporting Staff' AND active=1 ORDER BY full_name").fetchall()
-        recent = c.execute("""SELECT ir.*,cm.state_code,cm.full_name,p.name AS ppa_name,p.lga,u.full_name AS inspector_name
-                    FROM inspection_records ir JOIN corps_members cm ON cm.id=ir.corps_member_id
-                    JOIN ppa_establishments p ON p.id=ir.ppa_id JOIN users u ON u.id=ir.inspected_by
-                    ORDER BY ir.id DESC LIMIT 30""").fetchall()
-        c.close()
+        with db() as c:
+            ppas = c.execute("""SELECT p.*, COUNT(cm.id) AS corps_count,
+                        (SELECT COUNT(*) FROM inspection_assignments ia WHERE ia.ppa_id=p.id AND ia.status='Active') AS assigned
+                        FROM ppa_establishments p LEFT JOIN corps_members cm ON cm.ppa_id=p.id
+                        WHERE p.active=1 GROUP BY p.id ORDER BY p.lga,p.name""").fetchall()
+            assignments = c.execute("""SELECT ia.*,p.name AS ppa_name,p.lga,u.full_name AS staff_name
+                        FROM inspection_assignments ia JOIN ppa_establishments p ON p.id=ia.ppa_id
+                        JOIN users u ON u.id=ia.supporting_staff_id
+                        WHERE ia.status='Active' ORDER BY p.lga,p.name""").fetchall()
+            staff = c.execute("SELECT id,full_name,username FROM users WHERE role='Supporting Staff' AND active=1 ORDER BY full_name").fetchall()
+            recent = c.execute("""SELECT ir.*,cm.state_code,cm.full_name,p.name AS ppa_name,p.lga,u.full_name AS inspector_name
+                        FROM inspection_records ir JOIN corps_members cm ON cm.id=ir.corps_member_id
+                        JOIN ppa_establishments p ON p.id=ir.ppa_id JOIN users u ON u.id=ir.inspected_by
+                        ORDER BY ir.id DESC LIMIT 30""").fetchall()
         return render_template("inspections.html", mode="management", ppas=ppas, assignments=assignments, staff=staff, recent=recent)
     if u["role"] == "Supporting Staff":
-        c = db()
-        assigned = c.execute("""SELECT p.id,p.name,p.lga,COUNT(cm.id) AS corps_count
-                    FROM inspection_assignments ia JOIN ppa_establishments p ON p.id=ia.ppa_id
-                    LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
-                    WHERE ia.supporting_staff_id=%s AND ia.status='Active' AND p.active=1
-                    GROUP BY p.id ORDER BY p.lga,p.name""", (u["id"],)).fetchall()
-        mine = c.execute("""SELECT ir.*,cm.state_code,cm.full_name,p.name AS ppa_name,p.lga
-                    FROM inspection_records ir JOIN corps_members cm ON cm.id=ir.corps_member_id
-                    JOIN ppa_establishments p ON p.id=ir.ppa_id
-                    WHERE ir.inspected_by=%s ORDER BY ir.id DESC LIMIT 50""", (u["id"],)).fetchall()
-        c.close()
+        with db() as c:
+            assigned = c.execute("""SELECT p.id,p.name,p.lga,COUNT(cm.id) AS corps_count
+                        FROM inspection_assignments ia JOIN ppa_establishments p ON p.id=ia.ppa_id
+                        LEFT JOIN corps_members cm ON cm.ppa_id=p.id AND cm.status='Active'
+                        WHERE ia.supporting_staff_id=%s AND ia.status='Active' AND p.active=1
+                        GROUP BY p.id ORDER BY p.lga,p.name""", (u["id"],)).fetchall()
+            mine = c.execute("""SELECT ir.*,cm.state_code,cm.full_name,p.name AS ppa_name,p.lga
+                        FROM inspection_records ir JOIN corps_members cm ON cm.id=ir.corps_member_id
+                        JOIN ppa_establishments p ON p.id=ir.ppa_id
+                        WHERE ir.inspected_by=%s ORDER BY ir.id DESC LIMIT 50""", (u["id"],)).fetchall()
         return render_template("inspections.html", mode="staff", assigned=assigned, mine=mine)
     flash("Inspection access is not available to this role.", "error")
     return redirect(url_for("dashboard"))
@@ -1603,16 +1687,17 @@ def next_of_kin_search():
     q = request.args.get("q", "").strip()
     rows = []
     if q:
-        c = db(); like = f"%{q}%"
-        rows = c.execute("""
-            SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,nok.lga,
-                   cm.full_name AS corps_member_name
-            FROM corps_member_next_of_kin nok
-            JOIN corps_members cm ON cm.state_code=nok.state_code
-            JOIN ppa_establishments p ON p.id=cm.ppa_id
-            WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
-            ORDER BY cm.full_name LIMIT 250
-        """, (assigned_lga, assigned_lga, like)).fetchall(); c.close()
+        like = f"%{q}%"
+        with db() as c:
+            rows = c.execute("""
+                SELECT nok.state_code,nok.next_of_kin_name,nok.relationship,nok.phone,nok.address,nok.lga,
+                       cm.full_name AS corps_member_name
+                FROM corps_member_next_of_kin nok
+                JOIN corps_members cm ON cm.state_code=nok.state_code
+                JOIN ppa_establishments p ON p.id=cm.ppa_id
+                WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
+                ORDER BY cm.full_name LIMIT 250
+            """, (assigned_lga, assigned_lga, like)).fetchall()
     return render_template("next_of_kin_search.html", assigned_lga=assigned_lga, q=q, rows=rows)
 
 @app.route("/next-of-kin/import", methods=["GET", "POST"])
@@ -1644,38 +1729,37 @@ def next_of_kin_import():
                 flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
                 if error_rows: flash(" | ".join(error_rows[:8]), "error")
                 return redirect(url_for("next_of_kin_import"))
-            c = db(); t = now(); states = [f["state"] for f in valid]
-            existing = c.execute("SELECT state_code FROM corps_members WHERE state_code = ANY(%s)", (states,)).fetchall()
-            existing_states = {r["state_code"] for r in existing}
-            missing_states = [st for st in states if st not in existing_states]
-            if missing_states:
-                errors += len(missing_states); error_rows.extend([f"{st}: Corps Member State Code does not exist in the directory" for st in missing_states[:8]])
-                valid = [f for f in valid if f["state"] in existing_states]
-            if valid:
-                check = c.execute("""SELECT cm.state_code,p.lga FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id WHERE cm.state_code = ANY(%s)""", ([f["state"] for f in valid],)).fetchall()
-                lga_map = {r["state_code"]: r["lga"] for r in check}; safe = []
+            t = now(); states = [f["state"] for f in valid]
+            with db() as c:
+                existing = c.execute("SELECT state_code FROM corps_members WHERE state_code = ANY(%s)", (states,)).fetchall()
+                existing_states = {r["state_code"] for r in existing}
+                missing_states = [st for st in states if st not in existing_states]
+                if missing_states:
+                    errors += len(missing_states); error_rows.extend([f"{st}: Corps Member State Code does not exist in the directory" for st in missing_states[:8]])
+                    valid = [f for f in valid if f["state"] in existing_states]
+                if valid:
+                    check = c.execute("""SELECT cm.state_code,p.lga FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id WHERE cm.state_code = ANY(%s)""", ([f["state"] for f in valid],)).fetchall()
+                    lga_map = {r["state_code"]: r["lga"] for r in check}; safe = []
+                    for f in valid:
+                        if lga_map.get(f["state"]) != selected_lga: errors += 1; error_rows.append(f"{f['state']}: Corps Member is not assigned to {selected_lga}")
+                        else: safe.append(f)
+                    valid = safe
+                if not valid:
+                    c.rollback(); flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
+                    if error_rows: flash(" | ".join(error_rows[:8]), "error")
+                    return redirect(url_for("next_of_kin_import"))
+                states = [f["state"] for f in valid]
+                found = c.execute("SELECT state_code FROM corps_member_next_of_kin WHERE state_code = ANY(%s)", (states,)).fetchall(); existing_nok = {r["state_code"] for r in found}
+                new_count = sum(1 for f in valid if f["state"] not in existing_nok); updated_count = sum(1 for f in valid if f["state"] in existing_nok)
+                values = []; params = []
                 for f in valid:
-                    if lga_map.get(f["state"]) != selected_lga: errors += 1; error_rows.append(f"{f['state']}: Corps Member is not assigned to {selected_lga}")
-                    else: safe.append(f)
-                valid = safe
-            if not valid:
-                c.rollback(); c.close(); flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
-                if error_rows: flash(" | ".join(error_rows[:8]), "error")
-                return redirect(url_for("next_of_kin_import"))
-            states = [f["state"] for f in valid]
-            found = c.execute("SELECT state_code FROM corps_member_next_of_kin WHERE state_code = ANY(%s)", (states,)).fetchall(); existing_nok = {r["state_code"] for r in found}
-            new_count = sum(1 for f in valid if f["state"] not in existing_nok); updated_count = sum(1 for f in valid if f["state"] in existing_nok)
-            values = []; params = []
-            for f in valid:
-                values.append("(%s,%s,%s,%s,%s,%s,%s,%s)"); params.extend([f["state"], f["lga"], f["name"], f["relationship"], f["phone"], f["address"], t, t])
-            c.execute(f"""INSERT INTO corps_member_next_of_kin(state_code,lga,next_of_kin_name,relationship,phone,address,created_at,updated_at)
-                VALUES {','.join(values)} ON CONFLICT (state_code) DO UPDATE SET lga=EXCLUDED.lga,next_of_kin_name=EXCLUDED.next_of_kin_name,relationship=EXCLUDED.relationship,phone=EXCLUDED.phone,address=EXCLUDED.address,updated_at=EXCLUDED.updated_at""", params)
-            c.commit(); c.close()
+                    values.append("(%s,%s,%s,%s,%s,%s,%s,%s)"); params.extend([f["state"], f["lga"], f["name"], f["relationship"], f["phone"], f["address"], t, t])
+                c.execute(f"""INSERT INTO corps_member_next_of_kin(state_code,lga,next_of_kin_name,relationship,phone,address,created_at,updated_at)
+                    VALUES {','.join(values)} ON CONFLICT (state_code) DO UPDATE SET lga=EXCLUDED.lga,next_of_kin_name=EXCLUDED.next_of_kin_name,relationship=EXCLUDED.relationship,phone=EXCLUDED.phone,address=EXCLUDED.address,updated_at=EXCLUDED.updated_at""", params)
+                c.commit()
             flash(f"Next of Kin import completed: {processed} rows processed, {new_count} new, {updated_count} updated, {errors} errors.", "success" if errors == 0 else "error")
             if error_rows: flash(" | ".join(error_rows[:8]), "error")
         except Exception as exc:
-            try: c.rollback(); c.close()
-            except Exception: pass
             flash(f"Next of Kin import failed: {exc}", "error")
         return redirect(url_for("next_of_kin_import"))
     return render_template("next_of_kin_import.html", lgas=LGAS)
@@ -1737,7 +1821,7 @@ def _corps_import_handler(directory_mode=False):
                 deduped[f["state"].strip()] = f
             valid = list(deduped.values())
 
-            c = db(); t = now(); user = current_user(); user_identifier = user["full_name"] if user else "System"
+            t = now(); user = current_user(); user_identifier = user["full_name"] if user else "System"
 
             ppa_keys = []; seen_ppas = set()
             for f in valid:
@@ -1745,80 +1829,79 @@ def _corps_import_handler(directory_mode=False):
                 if key not in seen_ppas:
                     seen_ppas.add(key); ppa_keys.append(key)
 
-            if ppa_keys:
-                placeholders = ",".join(["(%s,%s,1,%s,%s)"] * len(ppa_keys))
-                params = []
+            with db() as c:
+                if ppa_keys:
+                    placeholders = ",".join(["(%s,%s,1,%s,%s)"] * len(ppa_keys))
+                    params = []
+                    for name, lga in ppa_keys:
+                        params.extend([name, lga, user_identifier, t])
+                    c.execute(f"""
+                        INSERT INTO ppa_establishments(name,lga,active,created_by,created_at)
+                        VALUES {placeholders}
+                        ON CONFLICT (name,lga) DO NOTHING
+                    """, params)
+
+                ppa_where = ",".join(["(%s,%s)"] * len(ppa_keys))
+                ppa_params = []
                 for name, lga in ppa_keys:
-                    params.extend([name, lga, user_identifier, t])
-                c.execute(f"""
-                    INSERT INTO ppa_establishments(name,lga,active,created_by,created_at)
-                    VALUES {placeholders}
-                    ON CONFLICT (name,lga) DO NOTHING
-                """, params)
+                    ppa_params.extend([name, lga])
+                ppa_rows = c.execute(f"""
+                    SELECT id,name,lga FROM ppa_establishments
+                    WHERE (name,lga) IN ({ppa_where})
+                """, ppa_params).fetchall()
+                ppa_map = {(r["name"].lower(), r["lga"].lower()): r["id"] for r in ppa_rows}
 
-            ppa_where = ",".join(["(%s,%s)"] * len(ppa_keys))
-            ppa_params = []
-            for name, lga in ppa_keys:
-                ppa_params.extend([name, lga])
-            ppa_rows = c.execute(f"""
-                SELECT id,name,lga FROM ppa_establishments
-                WHERE (name,lga) IN ({ppa_where})
-            """, ppa_params).fetchall()
-            ppa_map = {(r["name"].lower(), r["lga"].lower()): r["id"] for r in ppa_rows}
+                states = []; seen_states = set()
+                for f in valid:
+                    st = f["state"].strip()
+                    if st not in seen_states:
+                        seen_states.add(st); states.append(st)
 
-            states = []; seen_states = set()
-            for f in valid:
-                st = f["state"].strip()
-                if st not in seen_states:
-                    seen_states.add(st); states.append(st)
+                existing_states = set()
+                for i in range(0, len(states), 500):
+                    part = states[i:i+500]
+                    ph = ",".join(["%s"] * len(part))
+                    found = c.execute(f"SELECT state_code FROM corps_members WHERE state_code IN ({ph})", part).fetchall()
+                    existing_states.update(r["state_code"] for r in found)
 
-            existing_states = set()
-            for i in range(0, len(states), 500):
-                part = states[i:i+500]
-                ph = ",".join(["%s"] * len(part))
-                found = c.execute(f"SELECT state_code FROM corps_members WHERE state_code IN ({ph})", part).fetchall()
-                existing_states.update(r["state_code"] for r in found)
+                new_count = sum(1 for f in valid if f["state"] not in existing_states)
+                updated_count = sum(1 for f in valid if f["state"] in existing_states)
 
-            new_count = sum(1 for f in valid if f["state"] not in existing_states)
-            updated_count = sum(1 for f in valid if f["state"] in existing_states)
+                columns = ("state_code,full_name,gender,discipline,ppa_id,batch,stream,phone,status,created_at,updated_at")
+                for offset in range(0, len(valid), 500):
+                    chunk = valid[offset:offset+500]
+                    values = []; params = []
+                    for f in chunk:
+                        ppa_id = ppa_map.get((f["ppa"].strip().lower(), f["lga"].strip().lower()))
+                        if not ppa_id:
+                            raise RuntimeError(f"PPA could not be resolved: {f['ppa']} ({f['lga']})")
+                        values.append("(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+                        params.extend([
+                            f["state"], f["name"], f["gender"], f["discipline"], ppa_id,
+                            f["batch"], f["stream"], f["phone"], f["status"], t, t
+                        ])
+                    c.execute(f"""
+                        INSERT INTO corps_members({columns})
+                        VALUES {','.join(values)}
+                        ON CONFLICT (state_code) DO UPDATE SET
+                            full_name=EXCLUDED.full_name,
+                            gender=EXCLUDED.gender,
+                            discipline=EXCLUDED.discipline,
+                            ppa_id=EXCLUDED.ppa_id,
+                            batch=EXCLUDED.batch,
+                            stream=EXCLUDED.stream,
+                            phone=EXCLUDED.phone,
+                            status=EXCLUDED.status,
+                            updated_at=EXCLUDED.updated_at
+                    """, params)
 
-            columns = ("state_code,full_name,gender,discipline,ppa_id,batch,stream,phone,status,created_at,updated_at")
-            for offset in range(0, len(valid), 500):
-                chunk = valid[offset:offset+500]
-                values = []; params = []
-                for f in chunk:
-                    ppa_id = ppa_map.get((f["ppa"].strip().lower(), f["lga"].strip().lower()))
-                    if not ppa_id:
-                        raise RuntimeError(f"PPA could not be resolved: {f['ppa']} ({f['lga']})")
-                    values.append("(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
-                    params.extend([
-                        f["state"], f["name"], f["gender"], f["discipline"], ppa_id,
-                        f["batch"], f["stream"], f["phone"], f["status"], t, t
-                    ])
-                c.execute(f"""
-                    INSERT INTO corps_members({columns})
-                    VALUES {','.join(values)}
-                    ON CONFLICT (state_code) DO UPDATE SET
-                        full_name=EXCLUDED.full_name,
-                        gender=EXCLUDED.gender,
-                        discipline=EXCLUDED.discipline,
-                        ppa_id=EXCLUDED.ppa_id,
-                        batch=EXCLUDED.batch,
-                        stream=EXCLUDED.stream,
-                        phone=EXCLUDED.phone,
-                        status=EXCLUDED.status,
-                        updated_at=EXCLUDED.updated_at
-                """, params)
-
-            c.commit(); c.close()
+                c.commit()
 
             msg = f"Import completed: {processed} rows processed, {new_count} new, {updated_count} updated, {errors} errors."
             flash(msg, "success" if errors == 0 else "error")
             if error_rows: flash(" | ".join(error_rows[:8]), "error")
 
         except Exception as exc:
-            try: c.rollback(); c.close()
-            except Exception: pass
             flash(f"Import failed: {exc}", "error")
         return redirect(url_for("corps_members_import" if directory_mode else "inspection_import"))
     return render_template("corps_members_import.html" if directory_mode else "inspection_import.html", lgas=LGAS)
@@ -1900,8 +1983,9 @@ def inspection_results():
         flash('Only the Zonal Inspector or Administrator can view the zonal inspection results.', 'error')
         return redirect(url_for('dashboard'))
     filters = _inspection_status_report_filters()
-    c = db(); rows, summary, lga_rows, ppa_rows = _inspection_status_report_data(c, filters)
-    ppas = c.execute("SELECT id,name,lga FROM ppa_establishments WHERE active=1 ORDER BY lga,name").fetchall(); c.close()
+    with db() as c:
+        rows, summary, lga_rows, ppa_rows = _inspection_status_report_data(c, filters)
+        ppas = c.execute("SELECT id,name,lga FROM ppa_establishments WHERE active=1 ORDER BY lga,name").fetchall()
     return render_template('inspection_results.html', rows=rows, summary=summary, lga_rows=lga_rows,
                            ppa_rows=ppa_rows, ppas=ppas, filters=filters, lgas=LGAS,
                            statuses=['Present', 'Absent', 'Leave', 'Sick Leave', 'Maternity Leave', 'Others', 'Pending'], generated_at=now())
@@ -1915,8 +1999,9 @@ def inspection_results_excel():
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
-    filters = _inspection_status_report_filters(); c = db()
-    rows, summary, lga_rows, ppa_rows = _inspection_status_report_data(c, filters); c.close()
+    filters = _inspection_status_report_filters()
+    with db() as c:
+        rows, summary, lga_rows, ppa_rows = _inspection_status_report_data(c, filters)
     statuses = ['Present', 'Absent', 'Leave', 'Sick Leave', 'Maternity Leave', 'Others', 'Pending']
     wb = Workbook(); ws = wb.active; ws.title = 'Zonal Summary'
     ws.append(['NYSC KATSINA ZONE — INSPECTION STATUS REPORT'])
@@ -1940,7 +2025,7 @@ def inspection_results_excel():
             sh.column_dimensions[letter].width = min(max(width + 2, 12), 42)
             for cell in col: cell.alignment = Alignment(vertical='top', wrap_text=True)
     out = io.BytesIO(); wb.save(out); out.seek(0)
-    return send_file(out, as_attachment=True, download_name=f'Katsina_Zone_Inspection_Status_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return send_file(out, as_attachment=True, download_name=f'Katsina_Zone_Inspection_Status_{datetime.now(ZoneInfo("Africa/Lagos")).strftime("%Y%m%d_%H%M%S")}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @app.route("/inspection/assign", methods=["POST"])
 @inspection_management_required
@@ -1948,37 +2033,42 @@ def inspection_assign():
     ppa_id = request.form.get("ppa_id", type=int); staff_id = request.form.get("staff_id", type=int)
     if not ppa_id or not staff_id:
         flash("PPA/Establishment and Supporting Staff are required.", "error"); return redirect(url_for("inspections"))
-    c = db(); p = c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1", (ppa_id,)).fetchone(); staff = c.execute("SELECT * FROM users WHERE id=%s AND role='Supporting Staff' AND active=1", (staff_id,)).fetchone()
-    if not p or not staff:
-        c.close(); flash("Invalid PPA or Supporting Staff selected.", "error"); return redirect(url_for("inspections"))
-    c.execute("UPDATE inspection_assignments SET status='Reassigned' WHERE ppa_id=%s AND status='Active'", (ppa_id,))
-    c.execute("""INSERT INTO inspection_assignments(ppa_id,supporting_staff_id,assigned_by,assigned_at,status)
-                 VALUES(%s,%s,%s,%s,'Active')""", (ppa_id, staff_id, current_user()["id"], now()))
-    c.commit(); c.close(); flash(f"{p['name']} assigned to {staff['full_name']}.", "success"); return redirect(url_for("inspections"))
+    with db() as c:
+        p = c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1", (ppa_id,)).fetchone(); staff = c.execute("SELECT * FROM users WHERE id=%s AND role='Supporting Staff' AND active=1", (staff_id,)).fetchone()
+        if not p or not staff:
+            flash("Invalid PPA or Supporting Staff selected.", "error"); return redirect(url_for("inspections"))
+        c.execute("UPDATE inspection_assignments SET status='Reassigned' WHERE ppa_id=%s AND status='Active'", (ppa_id,))
+        c.execute("""INSERT INTO inspection_assignments(ppa_id,supporting_staff_id,assigned_by,assigned_at,status)
+                     VALUES(%s,%s,%s,%s,'Active')""", (ppa_id, staff_id, current_user()["id"], now()))
+        c.commit()
+    flash(f"{p['name']} assigned to {staff['full_name']}.", "success"); return redirect(url_for("inspections"))
 
 @app.route("/inspection/assignment/<int:assignment_id>/remove", methods=["POST"])
 @inspection_management_required
 def inspection_remove_assignment(assignment_id):
-    c = db(); c.execute("UPDATE inspection_assignments SET status='Removed' WHERE id=%s", (assignment_id,)); c.commit(); c.close(); flash("Inspection assignment removed.", "success"); return redirect(url_for("inspections"))
+    with db() as c:
+        c.execute("UPDATE inspection_assignments SET status='Removed' WHERE id=%s", (assignment_id,))
+        c.commit()
+    flash("Inspection assignment removed.", "success"); return redirect(url_for("inspections"))
 
 @app.route("/inspection/ppa/<int:ppa_id>")
 @login_required
 def inspection_ppa(ppa_id):
-    u = current_user(); c = db()
-    p = c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1", (ppa_id,)).fetchone()
-    if not p:
-        c.close(); return "PPA not found", 404
-    if u["role"] == "Supporting Staff":
-        allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
-        if not allowed:
-            c.close(); flash("This PPA is not assigned to you.", "error"); return redirect(url_for("inspections"))
-    elif u["role"] not in ("Administrator", "Zonal Inspector"):
-        c.close(); flash("Inspection access is not available to this role.", "error"); return redirect(url_for("dashboard"))
-    members = c.execute("SELECT * FROM corps_members WHERE ppa_id=%s AND status='Active' ORDER BY full_name", (ppa_id,)).fetchall()
-    last_submission = c.execute("""SELECT ir.inspected_at,ir.attendance_status,u.full_name AS inspector_name
-        FROM inspection_records ir JOIN users u ON u.id=ir.inspected_by
-        WHERE ir.ppa_id=%s ORDER BY ir.id DESC LIMIT 1""", (ppa_id,)).fetchone()
-    c.close()
+    u = current_user()
+    with db() as c:
+        p = c.execute("SELECT * FROM ppa_establishments WHERE id=%s AND active=1", (ppa_id,)).fetchone()
+        if not p:
+            return "PPA not found", 404
+        if u["role"] == "Supporting Staff":
+            allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
+            if not allowed:
+                flash("This PPA is not assigned to you.", "error"); return redirect(url_for("inspections"))
+        elif u["role"] not in ("Administrator", "Zonal Inspector"):
+            flash("Inspection access is not available to this role.", "error"); return redirect(url_for("dashboard"))
+        members = c.execute("SELECT * FROM corps_members WHERE ppa_id=%s AND status='Active' ORDER BY full_name", (ppa_id,)).fetchall()
+        last_submission = c.execute("""SELECT ir.inspected_at,ir.attendance_status,u.full_name AS inspector_name
+            FROM inspection_records ir JOIN users u ON u.id=ir.inspected_by
+            WHERE ir.ppa_id=%s ORDER BY ir.id DESC LIMIT 1""", (ppa_id,)).fetchone()
     return render_template("inspection_ppa.html", ppa=p, members=members, last_submission=last_submission)
 
 @app.route("/inspection/ppa/<int:ppa_id>/search")
@@ -1987,17 +2077,16 @@ def inspection_search(ppa_id):
     u = current_user(); state = request.args.get("state_code", "").strip()
     if u["role"] != "Supporting Staff": return {"error": "Only Supporting Staff may use this search."}, 403
     if not state: return {"found": False, "message": "Enter a State Code to search."}
-    c = db()
-    allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
-    if not allowed: c.close(); return {"error": "PPA is not assigned to you."}, 403
-    row = c.execute("""SELECT cm.*,p.name AS ppa_name,p.lga,
-        (SELECT ir.attendance_status FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_status,
-        (SELECT ir.inspected_at FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_at,
-        (SELECT ir.remarks FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_remarks,
-        (SELECT ir.other_reason FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_other_reason
-        FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
-        WHERE cm.ppa_id=%s AND UPPER(REPLACE(cm.state_code,' ',''))=UPPER(REPLACE(%s,' ','')) AND cm.status='Active'""", (ppa_id, state)).fetchone()
-    c.close()
+    with db() as c:
+        allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
+        if not allowed: return {"error": "PPA is not assigned to you."}, 403
+        row = c.execute("""SELECT cm.*,p.name AS ppa_name,p.lga,
+            (SELECT ir.attendance_status FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_status,
+            (SELECT ir.inspected_at FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_at,
+            (SELECT ir.remarks FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_remarks,
+            (SELECT ir.other_reason FROM inspection_records ir WHERE ir.corps_member_id=cm.id ORDER BY ir.id DESC LIMIT 1) AS last_inspection_other_reason
+            FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
+            WHERE cm.ppa_id=%s AND UPPER(REPLACE(cm.state_code,' ',''))=UPPER(REPLACE(%s,' ','')) AND cm.status='Active'""", (ppa_id, state)).fetchone()
     if not row: return {"found": False, "message": "No active corps member with that State Code was found under this PPA."}
     return {"found": True, "member": dict(row)}
 
@@ -2023,39 +2112,38 @@ def inspection_record():
         flash("Please specify the reason for Other status.", "error")
         return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
         
-    c = db()
-    allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
-    member = c.execute("SELECT * FROM corps_members WHERE id=%s AND ppa_id=%s AND status='Active'", (member_id, ppa_id)).fetchone()
-    
-    if not allowed or not member:
-        c.close()
-        flash("The selected corps member or PPA is not assigned to you.", "error")
-        return redirect(url_for("inspections"))
+    with db() as c:
+        allowed = c.execute("SELECT 1 FROM inspection_assignments WHERE ppa_id=%s AND supporting_staff_id=%s AND status='Active'", (ppa_id, u["id"])).fetchone()
+        member = c.execute("SELECT * FROM corps_members WHERE id=%s AND ppa_id=%s AND status='Active'", (member_id, ppa_id)).fetchone()
         
-    ppa_details = c.execute("SELECT name, lga FROM ppa_establishments WHERE id=%s", (ppa_id,)).fetchone()
-    ppa_name = ppa_details["name"] if ppa_details else None
-    ppa_lga = ppa_details["lga"] if ppa_details else None
+        if not allowed or not member:
+            flash("The selected corps member or PPA is not assigned to you.", "error")
+            return redirect(url_for("inspections"))
+            
+        ppa_details = c.execute("SELECT name, lga FROM ppa_establishments WHERE id=%s", (ppa_id,)).fetchone()
+        ppa_name = ppa_details["name"] if ppa_details else None
+        ppa_lga = ppa_details["lga"] if ppa_details else None
 
-    iid = next_new_inspection_id()
-    t = now()
-    query = 1 if status == "Absent" else 0
-    
-    c.execute("""INSERT INTO inspection_records(inspection_id,corps_member_id,ppa_id,inspected_by,attendance_status,query_issued,other_reason,remarks,inspected_at)
-                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, member_id, ppa_id, u["id"], status, query, other, remarks, t))
-                 
-    findings = f"Attendance status: {status}. Query issued: {'Yes' if query else 'No'}." + (f" Reason: {other}." if other else "")
-    
-    c.execute("""INSERT INTO inspections(inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status)
-                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, ppa_lga, ppa_name, member["full_name"], "PPA Attendance Inspection", findings, remarks, u["full_name"], t, "Completed"))
-                 
-    c.commit()
-    c.close()
+        iid = next_new_inspection_id()
+        t = now()
+        query = 1 if status == "Absent" else 0
+        
+        c.execute("""INSERT INTO inspection_records(inspection_id,corps_member_id,ppa_id,inspected_by,attendance_status,query_issued,other_reason,remarks,inspected_at)
+                     VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, member_id, ppa_id, u["id"], status, query, other, remarks, t))
+                     
+        findings = f"Attendance status: {status}. Query issued: {'Yes' if query else 'No'}." + (f" Reason: {other}." if other else "")
+        
+        c.execute("""INSERT INTO inspections(inspection_id,lga,ppa_employer,corps_member,subject,findings,recommendations,inspected_by,inspected_at,status)
+                     VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (iid, ppa_lga, ppa_name, member["full_name"], "PPA Attendance Inspection", findings, remarks, u["full_name"], t, "Completed"))
+                     
+        c.commit()
+
     flash(f"{iid} recorded successfully. Query issued: {'YES' if query else 'NO'}.", "success")
     return redirect(url_for("inspection_ppa", ppa_id=ppa_id))
 
 def _next_inspection_report_id(c):
     n = c.execute("SELECT COUNT(*) AS count FROM inspection_report_submissions").fetchone()["count"]
-    return f"KZO-IR-{datetime.now().year}-{n+1:04d}"
+    return f"KZO-IR-{datetime.now(ZoneInfo('Africa/Lagos')).year}-{n+1:04d}"
 
 def _inspection_report_audit(c, submission_id, action, user, details=""):
     c.execute("""INSERT INTO inspection_report_audit
@@ -2102,7 +2190,8 @@ def inspection_reports_home():
     if user["role"] in ("Administrator", "Zonal Inspector"):
         return redirect(url_for("inspection_review_inbox"))
     if user["role"] == "Supporting Staff":
-        c = db(); rows = c.execute("SELECT * FROM inspection_report_submissions WHERE inspected_by_id=%s ORDER BY id DESC LIMIT 100", (user["id"],)).fetchall(); c.close()
+        with db() as c:
+            rows = c.execute("SELECT * FROM inspection_report_submissions WHERE inspected_by_id=%s ORDER BY id DESC LIMIT 100", (user["id"],)).fetchall()
         return render_template("inspection_report_staff.html", rows=rows, mode="staff_list")
     if user["role"] == "LGI Officer":
         return redirect(url_for("inspection_reports_lgi"))
@@ -2127,25 +2216,25 @@ def inspection_report_new():
         if lga not in LGAS or not inspection_date or not subject or not findings:
             flash("Select a valid LGA and provide the inspection date, subject and findings.", "error")
             return render_template("inspection_report_staff.html", mode="new", lgas=LGAS, form=request.form)
-        c = db()
-        try:
-            rid = _next_inspection_report_id(c); t = now()
-            row = c.execute("""INSERT INTO inspection_report_submissions
-                (report_id,lga,inspection_date,ppa_employer,corps_member,subject,findings,recommendations,inspected_by_id,inspected_by_name,submitted_at,status,revision)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Submitted',1) RETURNING id""",
-                (rid, lga, inspection_date, ppa or None, member or None, subject, findings, recommendations or None, user["id"], user["full_name"], t)).fetchone()
-            _save_inspection_evidence(c, row["id"], user)
-            _inspection_report_audit(c, row["id"], "Submitted", user, "Submitted to the Zonal Inspector.")
-            c.commit()
-        except (ValueError, Exception) as exc:
-            c.rollback(); c.close()
-            if isinstance(exc, ValueError):
-                flash(str(exc), "error")
-            else:
-                app.logger.exception("Could not submit inspection report")
-                flash("The report could not be submitted. Please try again or contact the administrator.", "error")
-            return render_template("inspection_report_staff.html", mode="new", lgas=LGAS, form=request.form)
-        c.close(); flash(f"Inspection report {rid} submitted to the ZI.", "success")
+        with db() as c:
+            try:
+                rid = _next_inspection_report_id(c); t = now()
+                row = c.execute("""INSERT INTO inspection_report_submissions
+                    (report_id,lga,inspection_date,ppa_employer,corps_member,subject,findings,recommendations,inspected_by_id,inspected_by_name,submitted_at,status,revision)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Submitted',1) RETURNING id""",
+                    (rid, lga, inspection_date, ppa or None, member or None, subject, findings, recommendations or None, user["id"], user["full_name"], t)).fetchone()
+                _save_inspection_evidence(c, row["id"], user)
+                _inspection_report_audit(c, row["id"], "Submitted", user, "Submitted to the Zonal Inspector.")
+                c.commit()
+            except (ValueError, Exception) as exc:
+                c.rollback()
+                if isinstance(exc, ValueError):
+                    flash(str(exc), "error")
+                else:
+                    app.logger.exception("Could not submit inspection report")
+                    flash("The report could not be submitted. Please try again or contact the administrator.", "error")
+                return render_template("inspection_report_staff.html", mode="new", lgas=LGAS, form=request.form)
+        flash(f"Inspection report {rid} submitted to the ZI.", "success")
         return redirect(url_for("inspection_reports_home"))
     return render_template("inspection_report_staff.html", mode="new", lgas=LGAS, form={})
 
@@ -2156,40 +2245,42 @@ def inspection_report_resubmit(submission_id):
     if user["role"] != "Supporting Staff":
         flash("Only the submitting Supporting Staff officer can revise a returned report.", "error")
         return redirect(url_for("inspection_reports_home"))
-    c = db(); row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND inspected_by_id=%s", (submission_id, user["id"])).fetchone()
-    if not row:
-        c.close(); return "Inspection report not found", 404
-    if row["status"] != "Returned":
-        c.close(); flash("Only returned reports can be revised and resubmitted.", "error"); return redirect(url_for("inspection_reports_home"))
-    if request.method == "POST":
-        lga = request.form.get("lga", "").strip(); date = request.form.get("inspection_date", "").strip(); subject = request.form.get("subject", "").strip(); findings = request.form.get("findings", "").strip()
-        if lga not in LGAS or not date or not subject or not findings:
-            c.close(); flash("LGA, inspection date, subject and findings are required.", "error")
-            return render_template("inspection_report_staff.html", mode="edit", submission=row, lgas=LGAS, form=request.form)
-        try:
-            t = now()
-            c.execute("""UPDATE inspection_report_submissions SET lga=%s,inspection_date=%s,ppa_employer=%s,corps_member=%s,subject=%s,findings=%s,recommendations=%s,submitted_at=%s,status='Submitted',revision=revision+1,review_comment=NULL,reviewed_by_id=NULL,reviewed_by_name=NULL,reviewed_at=NULL WHERE id=%s""",
-                (lga, date, request.form.get("ppa_employer", "").strip() or None, request.form.get("corps_member", "").strip() or None, subject, findings, request.form.get("recommendations", "").strip() or None, t, submission_id))
-            _save_inspection_evidence(c, submission_id, user)
-            _inspection_report_audit(c, submission_id, "Resubmitted", user, "Corrected report resubmitted to the Zonal Inspector.")
-            c.commit()
-        except Exception as exc:
-            c.rollback(); c.close(); app.logger.exception("Could not resubmit inspection report")
-            flash(str(exc) if isinstance(exc, ValueError) else "The report could not be resubmitted.", "error")
-            return redirect(url_for("inspection_report_resubmit", submission_id=submission_id))
-        c.close(); flash("Corrected inspection report resubmitted to the ZI.", "success")
-        return redirect(url_for("inspection_reports_home"))
-    c.close(); return render_template("inspection_report_staff.html", mode="edit", submission=row, lgas=LGAS, form=row)
+    with db() as c:
+        row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND inspected_by_id=%s", (submission_id, user["id"])).fetchone()
+        if not row:
+            return "Inspection report not found", 404
+        if row["status"] != "Returned":
+            flash("Only returned reports can be revised and resubmitted.", "error"); return redirect(url_for("inspection_reports_home"))
+        if request.method == "POST":
+            lga = request.form.get("lga", "").strip(); date = request.form.get("inspection_date", "").strip(); subject = request.form.get("subject", "").strip(); findings = request.form.get("findings", "").strip()
+            if lga not in LGAS or not date or not subject or not findings:
+                flash("LGA, inspection date, subject and findings are required.", "error")
+                return render_template("inspection_report_staff.html", mode="edit", submission=row, lgas=LGAS, form=request.form)
+            try:
+                t = now()
+                c.execute("""UPDATE inspection_report_submissions SET lga=%s,inspection_date=%s,ppa_employer=%s,corps_member=%s,subject=%s,findings=%s,recommendations=%s,submitted_at=%s,status='Submitted',revision=revision+1,review_comment=NULL,reviewed_by_id=NULL,reviewed_by_name=NULL,reviewed_at=NULL WHERE id=%s""",
+                    (lga, date, request.form.get("ppa_employer", "").strip() or None, request.form.get("corps_member", "").strip() or None, subject, findings, request.form.get("recommendations", "").strip() or None, t, submission_id))
+                _save_inspection_evidence(c, submission_id, user)
+                _inspection_report_audit(c, submission_id, "Resubmitted", user, "Corrected report resubmitted to the Zonal Inspector.")
+                c.commit()
+            except Exception as exc:
+                c.rollback(); app.logger.exception("Could not resubmit inspection report")
+                flash(str(exc) if isinstance(exc, ValueError) else "The report could not be resubmitted.", "error")
+                return redirect(url_for("inspection_report_resubmit", submission_id=submission_id))
+            flash("Corrected inspection report resubmitted to the ZI.", "success")
+            return redirect(url_for("inspection_reports_home"))
+    return render_template("inspection_report_staff.html", mode="edit", submission=row, lgas=LGAS, form=row)
 
 @app.route("/inspection-reports/<int:submission_id>")
 @login_required
 def inspection_report_view(submission_id):
-    user = current_user(); c = db()
-    submission = _report_visible_to_user(c, submission_id, user)
-    if not submission:
-        c.close(); return "Inspection report not found", 404
-    evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
-    history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall(); c.close()
+    user = current_user()
+    with db() as c:
+        submission = _report_visible_to_user(c, submission_id, user)
+        if not submission:
+            return "Inspection report not found", 404
+        evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
+        history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
     return render_template("inspection_review_detail.html", submission=submission, evidence=evidence, history=history, can_decide=False, lgas=LGAS, readonly=True)
 
 @app.route("/inspection-reports/review")
@@ -2200,11 +2291,13 @@ def inspection_review_inbox():
         flash("Only the Zonal Inspector or Administrator can review and distribute inspection reports.", "error")
         return redirect(url_for("dashboard"))
     lga = request.args.get("lga", "").strip(); status = request.args.get("status", "").strip()
-    c = db(); sql_query = """SELECT s.*, (SELECT COUNT(*) FROM inspection_report_evidence e WHERE e.submission_id=s.id) AS evidence_count
+    sql_query = """SELECT s.*, (SELECT COUNT(*) FROM inspection_report_evidence e WHERE e.submission_id=s.id) AS evidence_count
         FROM inspection_report_submissions s WHERE 1=1"""; args = []
     if lga in LGAS: sql_query += " AND s.lga=%s"; args.append(lga)
     if status in ("Submitted", "Returned", "Shared", "Acknowledged"): sql_query += " AND s.status=%s"; args.append(status)
-    sql_query += " ORDER BY s.id DESC LIMIT 300"; rows = c.execute(sql_query, args).fetchall(); c.close()
+    sql_query += " ORDER BY s.id DESC LIMIT 300"
+    with db() as c:
+        rows = c.execute(sql_query, args).fetchall()
     return render_template("inspection_review_inbox.html", rows=rows, lgas=LGAS, selected_lga=lga, status_filter=status)
 
 @app.route("/inspection-reports/review/<int:submission_id>")
@@ -2213,11 +2306,12 @@ def inspection_review_detail(submission_id):
     user = current_user()
     if user["role"] not in ("Administrator", "Zonal Inspector"):
         flash("Only the Zonal Inspector or Administrator can review inspection reports.", "error"); return redirect(url_for("dashboard"))
-    c = db(); submission = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s", (submission_id,)).fetchone()
-    if not submission:
-        c.close(); return "Inspection report not found", 404
-    evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
-    history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall(); c.close()
+    with db() as c:
+        submission = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s", (submission_id,)).fetchone()
+        if not submission:
+            return "Inspection report not found", 404
+        evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
+        history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
     return render_template("inspection_review_detail.html", submission=submission, evidence=evidence, history=history, can_decide=submission["status"] in ("Submitted", "Returned"), lgas=LGAS)
 
 @app.route("/inspection-reports/review/<int:submission_id>/decision", methods=["POST"])
@@ -2231,21 +2325,23 @@ def inspection_review_decision(submission_id):
         flash("Choose either Return for Correction or Share with LGI.", "error"); return redirect(url_for("inspection_review_detail", submission_id=submission_id))
     if decision == "Returned" and not comment:
         flash("A return reason is required so Supporting Staff know what to correct.", "error"); return redirect(url_for("inspection_review_detail", submission_id=submission_id))
-    c = db(); row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s", (submission_id,)).fetchone()
-    if not row:
-        c.close(); return "Inspection report not found", 404
-    if row["status"] not in ("Submitted", "Returned"):
-        c.close(); flash("This report has already been shared or acknowledged and cannot be re-reviewed through this action.", "error"); return redirect(url_for("inspection_review_detail", submission_id=submission_id))
-    t = now()
-    if decision == "Returned":
-        c.execute("UPDATE inspection_report_submissions SET status='Returned',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s WHERE id=%s", (comment, user["id"], user["full_name"], t, submission_id))
-        _inspection_report_audit(c, submission_id, "Returned for correction", user, comment)
-        flash("Report returned to Supporting Staff for correction.", "success")
-    else:
-        c.execute("UPDATE inspection_report_submissions SET status='Shared',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s,shared_by_id=%s,shared_by_name=%s,shared_at=%s WHERE id=%s", (comment or None, user["id"], user["full_name"], t, user["id"], user["full_name"], t, submission_id))
-        _inspection_report_audit(c, submission_id, "Shared with LGI", user, f"Shared with {row['lga']} LGI. Corrective action remains pending until updated by the LGI.")
-        flash(f"Report shared with the {row['lga']} LGI. Corrective action is not marked complete.", "success")
-    c.commit(); c.close(); return redirect(url_for("inspection_review_detail", submission_id=submission_id))
+    with db() as c:
+        row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s", (submission_id,)).fetchone()
+        if not row:
+            return "Inspection report not found", 404
+        if row["status"] not in ("Submitted", "Returned"):
+            flash("This report has already been shared or acknowledged and cannot be re-reviewed through this action.", "error"); return redirect(url_for("inspection_review_detail", submission_id=submission_id))
+        t = now()
+        if decision == "Returned":
+            c.execute("UPDATE inspection_report_submissions SET status='Returned',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s WHERE id=%s", (comment, user["id"], user["full_name"], t, submission_id))
+            _inspection_report_audit(c, submission_id, "Returned for correction", user, comment)
+            flash("Report returned to Supporting Staff for correction.", "success")
+        else:
+            c.execute("UPDATE inspection_report_submissions SET status='Shared',review_comment=%s,reviewed_by_id=%s,reviewed_by_name=%s,reviewed_at=%s,shared_by_id=%s,shared_by_name=%s,shared_at=%s WHERE id=%s", (comment or None, user["id"], user["full_name"], t, user["id"], user["full_name"], t, submission_id))
+            _inspection_report_audit(c, submission_id, "Shared with LGI", user, f"Shared with {row['lga']} LGI. Corrective action remains pending until updated by the LGI.")
+            flash(f"Report shared with the {row['lga']} LGI. Corrective action is not marked complete.", "success")
+        c.commit()
+    return redirect(url_for("inspection_review_detail", submission_id=submission_id))
 
 @app.route("/inspection-reports/lgi")
 @login_required
@@ -2253,7 +2349,8 @@ def inspection_reports_lgi():
     user = current_user()
     if user["role"] != "LGI Officer" or user.get("lga") not in LGAS:
         flash("This page is only available to an LGI Officer with an assigned Katsina Zone LGA.", "error"); return redirect(url_for("dashboard"))
-    c = db(); rows = c.execute("SELECT * FROM inspection_report_submissions WHERE lga=%s AND status IN ('Shared','Acknowledged') ORDER BY id DESC LIMIT 300", (user["lga"],)).fetchall(); c.close()
+    with db() as c:
+        rows = c.execute("SELECT * FROM inspection_report_submissions WHERE lga=%s AND status IN ('Shared','Acknowledged') ORDER BY id DESC LIMIT 300", (user["lga"],)).fetchall()
     return render_template("inspection_reports_lgi.html", rows=rows)
 
 @app.route("/inspection-reports/lgi/<int:submission_id>", methods=["GET", "POST"])
@@ -2262,50 +2359,52 @@ def inspection_report_lgi_detail(submission_id):
     user = current_user()
     if user["role"] != "LGI Officer" or user.get("lga") not in LGAS:
         flash("This page is only available to an LGI Officer with an assigned Katsina Zone LGA.", "error"); return redirect(url_for("dashboard"))
-    c = db(); row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND lga=%s AND status IN ('Shared','Acknowledged')", (submission_id, user["lga"])).fetchone()
-    if not row:
-        c.close(); return "Inspection report not found", 404
-    if request.method == "POST":
-        action = request.form.get("action", ""); t = now()
-        if action == "acknowledge":
-            if row["status"] == "Shared":
-                c.execute("UPDATE inspection_report_submissions SET status='Acknowledged',acknowledged_by_id=%s,acknowledged_by_name=%s,acknowledged_at=%s WHERE id=%s AND lga=%s", (user["id"], user["full_name"], t, submission_id, user["lga"]))
-                _inspection_report_audit(c, submission_id, "Acknowledged by LGI", user, "LGI acknowledged receipt; this does not mean corrective action is complete.")
-                c.commit(); flash("Receipt acknowledged. Corrective action remains a separate step.", "success")
-        elif action == "action_update":
-            action_text = request.form.get("corrective_action", "").strip()
-            if not action_text:
-                c.close(); flash("Enter the action taken or current follow-up status.", "error"); return redirect(url_for("inspection_report_lgi_detail", submission_id=submission_id))
-            c.execute("UPDATE inspection_report_submissions SET corrective_action=%s,corrective_action_by_id=%s,corrective_action_by_name=%s,corrective_action_updated_at=%s WHERE id=%s AND lga=%s", (action_text, user["id"], user["full_name"], t, submission_id, user["lga"]))
-            _inspection_report_audit(c, submission_id, "Corrective action updated by LGI", user, action_text)
-            c.commit(); flash("Corrective action update saved.", "success")
-        c.close(); return redirect(url_for("inspection_report_lgi_detail", submission_id=submission_id))
-    evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
-    history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall(); c.close()
+    with db() as c:
+        row = c.execute("SELECT * FROM inspection_report_submissions WHERE id=%s AND lga=%s AND status IN ('Shared','Acknowledged')", (submission_id, user["lga"])).fetchone()
+        if not row:
+            return "Inspection report not found", 404
+        if request.method == "POST":
+            action = request.form.get("action", ""); t = now()
+            if action == "acknowledge":
+                if row["status"] == "Shared":
+                    c.execute("UPDATE inspection_report_submissions SET status='Acknowledged',acknowledged_by_id=%s,acknowledged_by_name=%s,acknowledged_at=%s WHERE id=%s AND lga=%s", (user["id"], user["full_name"], t, submission_id, user["lga"]))
+                    _inspection_report_audit(c, submission_id, "Acknowledged by LGI", user, "LGI acknowledged receipt; this does not mean corrective action is complete.")
+                    c.commit(); flash("Receipt acknowledged. Corrective action remains a separate step.", "success")
+            elif action == "action_update":
+                action_text = request.form.get("corrective_action", "").strip()
+                if not action_text:
+                    flash("Enter the action taken or current follow-up status.", "error"); return redirect(url_for("inspection_report_lgi_detail", submission_id=submission_id))
+                c.execute("UPDATE inspection_report_submissions SET corrective_action=%s,corrective_action_by_id=%s,corrective_action_by_name=%s,corrective_action_updated_at=%s WHERE id=%s AND lga=%s", (action_text, user["id"], user["full_name"], t, submission_id, user["lga"]))
+                _inspection_report_audit(c, submission_id, "Corrective action updated by LGI", user, action_text)
+                c.commit(); flash("Corrective action update saved.", "success")
+            return redirect(url_for("inspection_report_lgi_detail", submission_id=submission_id))
+        evidence = c.execute("SELECT * FROM inspection_report_evidence WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
+        history = c.execute("SELECT * FROM inspection_report_audit WHERE submission_id=%s ORDER BY id", (submission_id,)).fetchall()
     return render_template("inspection_report_lgi_detail.html", submission=row, evidence=evidence, history=history)
 
 @app.route("/inspection-reports/evidence/<int:evidence_id>")
 @login_required
 def inspection_report_evidence_download(evidence_id):
-    user = current_user(); c = db()
-    evidence = c.execute("SELECT e.*,s.id AS submission_id,s.lga,s.status,s.inspected_by_id FROM inspection_report_evidence e JOIN inspection_report_submissions s ON s.id=e.submission_id WHERE e.id=%s", (evidence_id,)).fetchone()
-    if not evidence:
-        c.close(); return "Evidence not found", 404
-    allowed = (user["role"] in ("Administrator", "Zonal Inspector") or
-        (user["role"] == "Supporting Staff" and evidence["inspected_by_id"] == user["id"]) or
-        (user["role"] == "LGI Officer" and user.get("lga") == evidence["lga"] and evidence["status"] in ("Shared", "Acknowledged")))
-    c.close()
+    user = current_user()
+    with db() as c:
+        evidence = c.execute("SELECT e.*,s.id AS submission_id,s.lga,s.status,s.inspected_by_id FROM inspection_report_evidence e JOIN inspection_report_submissions s ON s.id=e.submission_id WHERE e.id=%s", (evidence_id,)).fetchone()
+        if not evidence:
+            return "Evidence not found", 404
+        allowed = (user["role"] in ("Administrator", "Zonal Inspector") or
+            (user["role"] == "Supporting Staff" and evidence["inspected_by_id"] == user["id"]) or
+            (user["role"] == "LGI Officer" and user.get("lga") == evidence["lga"] and evidence["status"] in ("Shared", "Acknowledged")))
     if not allowed: return "You are not permitted to access this evidence", 403
     return send_from_directory(UPLOADS, evidence["stored_name"], as_attachment=True, download_name=evidence["original_name"])
 
 @app.route("/reports")
 @login_required
 def reports():
-    u = current_user(); c = db()
-    if u["role"] == "LGI Officer": rows = c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC", (u["lga"],)).fetchall()
-    elif u["role"] in ("Administrator", "Zonal Inspector"): rows = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
-    else: c.close(); flash("Reports are not available to this role.", "error"); return redirect(url_for("dashboard"))
-    c.close(); return render_template("reports.html", rows=rows, report_only=(u["role"] == "LGI Officer"))
+    u = current_user()
+    with db() as c:
+        if u["role"] == "LGI Officer": rows = c.execute("SELECT * FROM reports WHERE lga=%s ORDER BY id DESC", (u["lga"],)).fetchall()
+        elif u["role"] in ("Administrator", "Zonal Inspector"): rows = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+        else: flash("Reports are not available to this role.", "error"); return redirect(url_for("dashboard"))
+    return render_template("reports.html", rows=rows, report_only=(u["role"] == "LGI Officer"))
 
 @app.route("/report/new", methods=["GET", "POST"])
 @report_management_required
@@ -2313,7 +2412,11 @@ def new_report():
     if request.method == "POST":
         subject = request.form.get("subject", "").strip(); body = request.form.get("report_body", "").strip(); lga = request.form.get("lga", "").strip()
         if not subject or not body or lga not in LGAS: flash("LGA, report subject and report content are required.", "error"); return redirect(url_for("new_report"))
-        t = now(); rid = next_report_id(); u = current_user(); c = db(); c.execute("INSERT INTO reports (report_id,lga,report_type,ppa_employer,corps_member,subject,report_body,issued_by,issued_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (rid, lga, request.form.get("report_type", "General LGA Report"), request.form.get("ppa_employer"), request.form.get("corps_member"), subject, body, u["full_name"], t, "Issued")); c.commit(); c.close(); flash(f"{rid} issued to {lga} LGI.", "success"); return redirect(url_for("reports"))
+        t = now(); rid = next_report_id(); u = current_user()
+        with db() as c:
+            c.execute("INSERT INTO reports (report_id,lga,report_type,ppa_employer,corps_member,subject,report_body,issued_by,issued_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (rid, lga, request.form.get("report_type", "General LGA Report"), request.form.get("ppa_employer"), request.form.get("corps_member"), subject, body, u["full_name"], t, "Issued"))
+            c.commit()
+        flash(f"{rid} issued to {lga} LGI.", "success"); return redirect(url_for("reports"))
     return render_template("report_form.html", lgas=LGAS)
 
 @app.route("/reposting-reports", methods=["GET", "POST"])
@@ -2322,14 +2425,14 @@ def reposting_reports():
     u = current_user()
     if u["role"] not in ("Administrator", "Zonal Inspector"):
         flash("Only the Administrator or Zonal Inspector may manage reposting reports.", "error"); return redirect(url_for("dashboard"))
-    c = db()
-    if request.method == "POST" and request.form.get("action") == "publish":
-        ids = request.form.getlist("reposting_id")
-        if ids:
-            c.execute("UPDATE reposting_movements SET published=1,published_at=%s WHERE id=ANY(%s)", (now(), ids)); c.commit(); flash(f"{len(ids)} reposting record(s) shared with affected LGIs.", "success")
-        else: flash("Select at least one reposting record to share.", "error")
-        c.close(); return redirect(url_for("reposting_reports"))
-    rows = c.execute("SELECT * FROM reposting_movements ORDER BY id DESC LIMIT 200").fetchall(); c.close()
+    with db() as c:
+        if request.method == "POST" and request.form.get("action") == "publish":
+            ids = request.form.getlist("reposting_id")
+            if ids:
+                c.execute("UPDATE reposting_movements SET published=1,published_at=%s WHERE id=ANY(%s)", (now(), ids)); c.commit(); flash(f"{len(ids)} reposting record(s) shared with affected LGIs.", "success")
+            else: flash("Select at least one reposting record to share.", "error")
+            return redirect(url_for("reposting_reports"))
+        rows = c.execute("SELECT * FROM reposting_movements ORDER BY id DESC LIMIT 200").fetchall()
     return render_template("reposting_reports.html", rows=rows)
 
 @app.route("/reposting-notification/<int:notification_id>/view")
@@ -2337,7 +2440,10 @@ def reposting_reports():
 def view_reposting_notification(notification_id):
     u = current_user()
     if u["role"] != "LGI Officer": return redirect(url_for("dashboard"))
-    c = db(); c.execute("UPDATE reposting_notifications SET viewed=1,viewed_at=%s WHERE id=%s AND lga=%s", (now(), notification_id, u["lga"])); c.commit(); c.close(); return redirect(url_for("dashboard"))
+    with db() as c:
+        c.execute("UPDATE reposting_notifications SET viewed=1,viewed_at=%s WHERE id=%s AND lga=%s", (now(), notification_id, u["lga"]))
+        c.commit()
+    return redirect(url_for("dashboard"))
 
 @app.route("/download/<name>")
 @login_required
@@ -2486,8 +2592,8 @@ def clearance_member_by_code(c, code):
       SELECT cm.id,cm.state_code,cm.full_name,cm.status,cm.gender,cm.discipline,
              cm.batch,cm.stream,cm.phone,p.name AS ppa_name,p.lga
       FROM corps_members cm LEFT JOIN ppa_establishments p ON p.id=cm.ppa_id
-      WHERE UPPER(TRIM(cm.state_code))=%s
-    """, (code.strip().upper(),)).fetchone()
+      WHERE UPPER(TRIM(cm.state_code))=%s OR UPPER(REPLACE(cm.state_code, '/', ''))=%s
+    """, (code.strip().upper(), normalize_state_code(code))).fetchone()
 
 @app.route("/monthly-clearance")
 @login_required
@@ -2590,6 +2696,7 @@ def monthly_clearance_create():
                 c.execute("""INSERT INTO clearance_followups(case_id,campaign_id,lga,updated_at)
                   VALUES(%s,%s,%s,%s) ON CONFLICT(case_id) DO NOTHING""",(case["id"],campaign_id,m["lga"],now()))
             clearance_audit(c,campaign_id,None,u,"Campaign created",None,{"month_year":month_year,"valid":len(valid),"invalid":invalid,"duplicates":duplicate})
+            c.commit()
         flash(f"Draft created. Valid members: {len(valid)}; invalid/out-of-zone: {len(invalid)}; duplicate entries: {len(duplicate)}.","success")
         return redirect(url_for("monthly_clearance_review",campaign_id=campaign_id))
     return render_template("monthly_clearance_create.html", lgas=LGAS)
@@ -2653,6 +2760,7 @@ def monthly_clearance_publish(campaign_id):
                       (campaign_id, lga, msg, published))
                       
         clearance_audit(c, campaign_id, None, u, "Campaign published by ZI", {"status": "Draft"}, {"status": "Published", "deadline_at": deadline})
+        c.commit()
         
     flash("Campaign published. Notifications dispatched from the Zonal Inspector to affected LGIs (7-day deadline active).", "success")
     return redirect(url_for("monthly_clearance_home"))
@@ -2717,6 +2825,7 @@ def monthly_clearance_case(case_id):
               (status,contacted,explanation,action,recommendation,resolution,u["id"],now(),case_id))
             clearance_audit(c,case["campaign_id"],case_id,u,"LGI follow-up updated",
               {"status":case["status"]},{"status":status,"explanation":explanation,"follow_up_action":action,"recommendation":recommendation,"resolution_note":resolution})
+            c.commit()
             flash("Investigation update saved and audit history recorded.","success")
             return redirect(url_for("monthly_clearance_case",case_id=case_id))
     return render_template("monthly_clearance_case.html",case=case,statuses=CLEARANCE_FOLLOWUP_STATUSES,is_lgi=u["role"]=="LGI Officer")
@@ -2762,6 +2871,7 @@ def monthly_clearance_edit_case(case_id):
         
         new = {"state_code": member["state_code"], "full_name": member["full_name"], "lga": lga, "ppa_name": ppa_name}
         clearance_audit(c, m["campaign_id"], case_id, u, "Published case record edited", old, new)
+        c.commit()
         
     flash("Published case record updated; the change is in the audit history.", "success")
     return redirect(url_for("monthly_clearance_case", case_id=case_id))
@@ -2778,6 +2888,7 @@ def monthly_clearance_close(campaign_id):
             flash("Only a published campaign can be closed.","error"); return redirect(url_for("monthly_clearance_home"))
         c.execute("UPDATE clearance_months SET status='Closed',closed_by=%s,closed_at=%s WHERE id=%s",(u["id"],now(),campaign_id))
         clearance_audit(c,campaign_id,None,u,"Campaign closed",{"status":"Published"},{"status":"Closed"})
+        c.commit()
     flash("Campaign closed. Its records remain available for reporting and audit.","success")
     return redirect(url_for("monthly_clearance_home"))
 
@@ -2818,6 +2929,7 @@ def monthly_clearance_notification_view(notification_id):
         c.execute("""UPDATE clearance_notifications SET viewed_at=%s
           WHERE id=%s AND (user_id=%s OR (user_id IS NULL AND lga=%s))""",(now(),notification_id,u["id"],u["lga"] or ""))
         row=c.execute("SELECT campaign_id FROM clearance_notifications WHERE id=%s",(notification_id,)).fetchone()
+        c.commit()
     return redirect(url_for("monthly_clearance_detail",campaign_id=row["campaign_id"]) if row else url_for("monthly_clearance_home"))
 
 @app.route("/monthly-clearance/reminders")
@@ -2852,6 +2964,7 @@ def monthly_clearance_reminders():
                        f"DIRECTIVE REMINDER ({camp['title']}): {pending} unresolved case(s) remain. " + ("The seven-day response deadline has passed." if key=="overdue" else "Your seven-day response deadline is within 24 hours."),
                        now(),key))
                     if cur.fetchone():sent+=1
+        c.commit()
     return {"status":"ok","notifications_created":sent}
 
 
