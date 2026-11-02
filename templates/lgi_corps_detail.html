@@ -1,156 +1,290 @@
 {% extends "base.html" %}
 
-{% block title %}{{ r.full_name }} | Corps Member Details{% endblock %}
+{% block title %}{{ r.full_name }} | Corps Member Profile{% endblock %}
 
 {% block content %}
-<div class="container my-4" style="max-width: 900px;">
-  <!-- Top Navigation Bar -->
-  <div class="mb-3 d-flex justify-content-between align-items-center">
-    <a href="{{ url_for('lgi_corps_search') }}" class="btn btn-outline-secondary btn-sm">
-      &larr; Back to Directory
+<style>
+  /* Scoped styles: keep this page independent of Bootstrap being loaded globally. */
+  .cm-profile-page {
+    width: 100%;
+    max-width: 1040px;
+    margin: 8px auto 34px;
+    color: #18332a;
+  }
+  .cm-profile-page * { box-sizing: border-box; }
+  .cm-profile-page .cm-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .cm-profile-page .cm-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 9px 14px;
+    border: 1px solid #cbded4;
+    border-radius: 9px;
+    background: #fff;
+    color: #176345;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .cm-profile-page .cm-back:hover { background: #f0f8f3; border-color: #8db9a2; }
+  .cm-profile-page .cm-location {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .02em;
+  }
+  .cm-profile-page .cm-location.local { background: #e4f5eb; color: #17633f; }
+  .cm-profile-page .cm-location.external { background: #fff2d8; color: #81510a; }
+  .cm-profile-page .cm-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 23px 25px;
+    border-radius: 15px 15px 0 0;
+    background: linear-gradient(120deg, #07543f, #087451);
+    color: #fff;
+  }
+  .cm-profile-page .cm-eyebrow {
+    margin: 0 0 6px;
+    color: #c7e5d7;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .cm-profile-page .cm-name {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(20px, 3vw, 27px);
+    line-height: 1.25;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .cm-profile-page .cm-code {
+    flex: 0 0 auto;
+    padding: 10px 13px;
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 9px;
+    background: rgba(255,255,255,.13);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .cm-profile-page .cm-card {
+    margin: 0 0 18px;
+    overflow: hidden;
+    border: 1px solid #dce9e1;
+    border-top: 0;
+    border-radius: 0 0 15px 15px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(20, 64, 44, .07);
+  }
+  .cm-profile-page .cm-card + .cm-card {
+    border-top: 1px solid #dce9e1;
+    border-radius: 15px;
+  }
+  .cm-profile-page .cm-card-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    padding: 15px 22px;
+    border-bottom: 1px solid #e8f0eb;
+    background: #f7fbf8;
+    color: #245b43;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .cm-profile-page .cm-card-body { padding: 22px; }
+  .cm-profile-page .cm-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+  }
+  .cm-profile-page .cm-field {
+    min-width: 0;
+    padding: 13px 14px;
+    border: 1px solid #e5eee8;
+    border-radius: 10px;
+    background: #fbfdfb;
+  }
+  .cm-profile-page .cm-field.wide { grid-column: 1 / -1; }
+  .cm-profile-page .cm-label {
+    display: block;
+    margin: 0 0 6px;
+    color: #718178;
+    font-size: 10px;
+    line-height: 1.3;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .cm-profile-page .cm-value {
+    display: block;
+    color: #20382d;
+    font-size: 15px;
+    line-height: 1.5;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+  .cm-profile-page .cm-value a { color: #087653; text-decoration: none; }
+  .cm-profile-page .cm-value a:hover { text-decoration: underline; }
+  .cm-profile-page .cm-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #e4f5eb;
+    color: #17633f;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .cm-profile-page .cm-status.inactive { background: #edf0ef; color: #56635c; }
+  .cm-profile-page .cm-alert {
+    margin: 0 0 18px;
+    padding: 13px 15px;
+    border: 1px solid #f0d59b;
+    border-radius: 10px;
+    background: #fff8e9;
+    color: #704b0b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .cm-profile-page .cm-alert.success { border-color: #b8dfc7; background: #eef9f1; color: #17633f; }
+  .cm-profile-page .cm-alert.danger { border-color: #efc1bd; background: #fff0ef; color: #982f29; }
+  .cm-profile-page .cm-empty { margin: 0; padding: 18px; color: #748178; text-align: center; font-size: 13px; }
+  @media (max-width: 620px) {
+    .cm-profile-page { margin-top: 0; }
+    .cm-profile-page .cm-toolbar { align-items: flex-start; }
+    .cm-profile-page .cm-hero { align-items: flex-start; flex-direction: column; padding: 20px; }
+    .cm-profile-page .cm-code { align-self: flex-start; }
+    .cm-profile-page .cm-card-body { padding: 15px; }
+    .cm-profile-page .cm-grid { grid-template-columns: 1fr; gap: 10px; }
+    .cm-profile-page .cm-field.wide { grid-column: auto; }
+  }
+</style>
+
+<div class="cm-profile-page">
+  <div class="cm-toolbar">
+    <a href="{{ url_for('lgi_corps_search') }}" class="cm-back">
+      <span aria-hidden="true">←</span> Back to Directory
     </a>
+
     {% if assigned_lga and r.lga != assigned_lga %}
-      <span class="badge bg-warning text-dark px-3 py-2 fs-6">
-        <i class="bi bi-geo-alt-fill me-1"></i> External LGA ({{ r.lga }})
-      </span>
+      <span class="cm-location external">● External LGA · {{ r.lga or 'Not specified' }}</span>
     {% elif r.lga %}
-      <span class="badge bg-success px-3 py-2 fs-6">
-        <i class="bi bi-geo-alt-fill me-1"></i> Local LGA ({{ r.lga }})
-      </span>
+      <span class="cm-location local">● Assigned LGA · {{ r.lga }}</span>
     {% endif %}
   </div>
 
-  <!-- Main Profile Card -->
-  <div class="card shadow-sm border-0 mb-4">
-    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center py-3">
-      <h3 class="h5 mb-0 fw-bold">{{ r.full_name }}</h3>
-      <span class="badge bg-light text-dark fw-bold px-3 py-2 fs-6">{{ r.state_code }}</span>
-    </div>
-    
-    <div class="card-body p-4">
-      <!-- Health PPA Compliance Alert (If Flagged) -->
-      {% if r.compliance_status %}
-      <div class="alert {% if r.compliance_status == 'Verified Compliant' %}alert-success{% elif r.compliance_status == 'Non-Compliant / Action Required' %}alert-danger{% else %}alert-warning{% endif %} mb-4" role="alert">
-        <div class="d-flex align-items-center">
-          <i class="bi bi-shield-exclamation fs-3 me-3"></i>
-          <div>
-            <strong class="d-block">Health PPA Compliance Review: {{ r.compliance_status }}</strong>
-            {% if r.compliance_flag_reason %}
-              <div class="small mt-1">{{ r.compliance_flag_reason }}</div>
-            {% endif %}
-          </div>
-        </div>
+  <section aria-label="Corps Member profile">
+    <div class="cm-hero">
+      <div>
+        <p class="cm-eyebrow">Corps Member Profile</p>
+        <h1 class="cm-name">{{ r.full_name }}</h1>
       </div>
-      {% endif %}
+      <div class="cm-code">{{ r.state_code }}</div>
+    </div>
 
-      <div class="row g-3">
-        <!-- Official Details -->
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">STATE CODE</label>
-          <div class="fs-6 fw-semibold text-dark">{{ r.state_code }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">ASSIGNED LGA</label>
-          <div class="fs-6 fw-semibold text-dark">{{ r.lga or '—' }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">GENDER</label>
-          <div class="fs-6 text-dark">{{ r.gender or '—' }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">DISCIPLINE / COURSE</label>
-          <div class="fs-6 text-dark">{{ r.discipline or '—' }}</div>
-        </div>
-
-        <div class="col-md-12">
-          <label class="text-muted small fw-bold d-block">PRIMARY PLACE OF ASSIGNMENT (PPA)</label>
-          <div class="fs-6 fw-semibold text-dark">{{ r.ppa_name or '—' }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">BATCH & STREAM</label>
-          <div class="fs-6 text-dark">
-            {{ r.batch or '—' }} {% if r.stream %}(Stream {{ r.stream }}){% endif %}
-          </div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">PHONE NUMBER</label>
-          <div class="fs-6 text-dark">
-            {% if r.phone %}
-              <a href="tel:{{ r.phone }}" class="text-decoration-none fw-semibold">
-                <i class="bi bi-telephone me-1"></i>{{ r.phone }}
-              </a>
-            {% else %}
-              —
+    <div class="cm-card">
+      <div class="cm-card-body">
+        {% if r.compliance_status %}
+          <div class="cm-alert {% if r.compliance_status == 'Verified Compliant' %}success{% elif r.compliance_status == 'Non-Compliant / Action Required' %}danger{% endif %}">
+            <strong>Health PPA Compliance Review: {{ r.compliance_status }}</strong>
+            {% if r.compliance_flag_reason %}
+              <div>{{ r.compliance_flag_reason }}</div>
             {% endif %}
           </div>
-        </div>
+        {% endif %}
 
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">STATUS</label>
-          <div>
-            <span class="badge {% if r.status == 'Active' %}bg-success{% else %}bg-secondary{% endif %}">
-              {{ r.status or 'Active' }}
+        <div class="cm-grid">
+          <div class="cm-field">
+            <span class="cm-label">State Code</span>
+            <span class="cm-value">{{ r.state_code or '—' }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Assigned LGA</span>
+            <span class="cm-value">{{ r.lga or '—' }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Gender</span>
+            <span class="cm-value">{{ r.gender or '—' }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Discipline / Course</span>
+            <span class="cm-value">{{ r.discipline or '—' }}</span>
+          </div>
+          <div class="cm-field wide">
+            <span class="cm-label">Primary Place of Assignment (PPA)</span>
+            <span class="cm-value">{{ r.ppa_name or '—' }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Batch &amp; Stream</span>
+            <span class="cm-value">{{ r.batch or '—' }}{% if r.stream %} · Stream {{ r.stream }}{% endif %}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Phone Number</span>
+            <span class="cm-value">
+              {% if r.phone %}
+                <a href="tel:{{ r.phone }}">☎ {{ r.phone }}</a>
+              {% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Service Status</span>
+            <span class="cm-value">
+              <span class="cm-status {% if r.status and r.status != 'Active' %}inactive{% endif %}">{{ r.status or 'Active' }}</span>
             </span>
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- Next of Kin Information Card -->
-  <div class="card shadow-sm border-0">
-    <div class="card-header bg-light border-0 py-3">
-      <h5 class="h6 mb-0 fw-bold text-secondary">
-        <i class="bi bi-person-lines-fill me-1"></i> Next of Kin Details
-      </h5>
-    </div>
-    <div class="card-body p-4">
-      {% if r.next_of_kin_name %}
-      <div class="row g-3">
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">NEXT OF KIN NAME</label>
-          <div class="fs-6 fw-semibold text-dark">{{ r.next_of_kin_name }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">RELATIONSHIP</label>
-          <div class="fs-6 text-dark">{{ r.relationship or '—' }}</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">PHONE NUMBER</label>
-          <div class="fs-6 text-dark">
-            {% if r.nok_phone %}
-              <a href="tel:{{ r.nok_phone }}" class="text-decoration-none fw-semibold">
-                <i class="bi bi-telephone me-1"></i>{{ r.nok_phone }}
-              </a>
-            {% else %}
-              —
-            {% endif %}
+  <section class="cm-card" aria-label="Next of Kin details">
+    <h2 class="cm-card-heading">Next of Kin Details</h2>
+    {% if r.next_of_kin_name %}
+      <div class="cm-card-body">
+        <div class="cm-grid">
+          <div class="cm-field">
+            <span class="cm-label">Next of Kin Name</span>
+            <span class="cm-value">{{ r.next_of_kin_name }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Relationship</span>
+            <span class="cm-value">{{ r.relationship or '—' }}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">Phone Number</span>
+            <span class="cm-value">{% if r.nok_phone %}<a href="tel:{{ r.nok_phone }}">☎ {{ r.nok_phone }}</a>{% else %}—{% endif %}</span>
+          </div>
+          <div class="cm-field">
+            <span class="cm-label">NOK LGA</span>
+            <span class="cm-value">{{ r.nok_lga or r.lga or '—' }}</span>
+          </div>
+          <div class="cm-field wide">
+            <span class="cm-label">Residential Address</span>
+            <span class="cm-value">{{ r.address or '—' }}</span>
           </div>
         </div>
-
-        <div class="col-md-6">
-          <label class="text-muted small fw-bold d-block">NOK LGA</label>
-          <div class="fs-6 text-dark">{{ r.nok_lga or r.lga or '—' }}</div>
-        </div>
-
-        <div class="col-md-12">
-          <label class="text-muted small fw-bold d-block">RESIDENTIAL ADDRESS</label>
-          <div class="fs-6 text-dark">{{ r.address or '—' }}</div>
-        </div>
       </div>
-      {% else %}
-      <div class="text-muted text-center py-3 small">
-        <i class="bi bi-info-circle me-1"></i> No Next of Kin record on file for this corps member.
-      </div>
-      {% endif %}
-    </div>
-  </div>
+    {% else %}
+      <p class="cm-empty">No Next of Kin record on file for this Corps Member.</p>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}
