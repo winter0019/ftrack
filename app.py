@@ -44,7 +44,7 @@ def lgi_corps_search():
                 cm.state_code ILIKE %s OR 
                 cm.full_name ILIKE %s OR 
                 COALESCE(cm.phone, '') ILIKE %s OR 
-                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\\D', '', 'g') ILIKE %s OR
+                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
                 COALESCE(cm.discipline, '') ILIKE %s OR 
                 p.name ILIKE %s
             )"""
