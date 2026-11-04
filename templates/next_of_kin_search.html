@@ -1,4 +1,112 @@
 {% extends "base.html" %}
+
+{% block title %}Next of Kin Search | KATZIMS{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width:1200px;margin:24px auto;padding:28px">
+    <h1>Search Next of Kin & Emergency Contacts</h1>
+    <p>Search by the Corps Member's <strong>State Code</strong>. Access is restricted to <strong>{{ current_user_lga }}</strong>.</p>
+
+    <form method="get" action="{{ url_for('next_of_kin_search') }}" style="margin:20px 0;display:flex;gap:12px;align-items:center">
+        <input 
+            type="text" 
+            name="q" 
+            value="{{ query or '' }}" 
+            placeholder="e.g. KT/26B/1603" 
+            required 
+            style="flex:1;padding:12px;border-radius:6px;border:1px solid #ccc;font-size:1rem"
+        >
+        <button class="cta" type="submit" style="padding:12px 24px;font-weight:600;cursor:pointer">Search</button>
+        {% if query %}
+            <a href="{{ url_for('next_of_kin_search') }}" style="color:#666;text-decoration:none;font-size:0.95rem">Clear</a>
+        {% endif %}
+    </form>
+
+    {% if query %}
+        <div style="margin-bottom:16px;font-weight:600;color:#ccc">
+            {{ results|length }} Result(s) Found
+        </div>
+
+        {% if results %}
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:0.92rem;text-align:left">
+                    <thead>
+                        <tr style="border-bottom:2px solid #444">
+                            <th style="padding:12px">CORPS MEMBER</th>
+                            <th style="padding:12px">NOK 1</th>
+                            <th style="padding:12px">NOK 2</th>
+                            <th style="padding:12px">NOK 3</th>
+                            <th style="padding:12px">ICE</th>
+                            <th style="padding:12px">ICD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                            <tr style="border-bottom:1px solid #333;vertical-align:top">
+                                <!-- Corps Member Info -->
+                                <td style="padding:12px">
+                                    <strong style="color:#fff">{{ row.corps_member_name }}</strong><br>
+                                    <small style="color:#aaa">{{ row.state_code }}</small>
+                                </td>
+
+                                <!-- NOK 1 -->
+                                <td style="padding:12px;line-height:1.5">
+                                    {% if row.nok1_name %}<strong style="color:#20c997">{{ row.nok1_name }}</strong><br>{% else %}—<br>{% endif %}
+                                    {% if row.nok1_rel %}{{ row.nok1_rel }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok1_phone %}{{ row.nok1_phone }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok1_address %}{{ row.nok1_address }}{% else %}—{% endif %}
+                                </td>
+
+                                <!-- NOK 2 -->
+                                <td style="padding:12px;line-height:1.5">
+                                    {% if row.nok2_name %}<strong style="color:#20c997">{{ row.nok2_name }}</strong><br>{% else %}—<br>{% endif %}
+                                    {% if row.nok2_rel %}{{ row.nok2_rel }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok2_phone %}{{ row.nok2_phone }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok2_address %}{{ row.nok2_address }}{% else %}—{% endif %}
+                                </td>
+
+                                <!-- NOK 3 -->
+                                <td style="padding:12px;line-height:1.5">
+                                    {% if row.nok3_name %}<strong style="color:#20c997">{{ row.nok3_name }}</strong><br>{% else %}—<br>{% endif %}
+                                    {% if row.nok3_rel %}{{ row.nok3_rel }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok3_phone %}{{ row.nok3_phone }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.nok3_address %}{{ row.nok3_address }}{% else %}—{% endif %}
+                                </td>
+
+                                <!-- ICE (Emergency) -->
+                                <td style="padding:12px;line-height:1.5">
+                                    {% if row.ice_name %}<strong style="color:#20c997">{{ row.ice_name }}</strong><br>{% else %}—<br>{% endif %}
+                                    {% if row.ice_rel %}{{ row.ice_rel }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.ice_phone %}{{ row.ice_phone }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.ice_address %}{{ row.ice_address }}{% else %}—{% endif %}
+                                </td>
+
+                                <!-- ICD (In Case of Death) -->
+                                <td style="padding:12px;line-height:1.5">
+                                    {% if row.icd_name %}<strong style="color:#20c997">{{ row.icd_name }}</strong><br>{% else %}—<br>{% endif %}
+                                    {% if row.icd_rel %}{{ row.icd_rel }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.icd_phone %}{{ row.icd_phone }}<br>{% else %}—<br>{% endif %}
+                                    {% if row.icd_address %}{{ row.icd_address }}{% else %}—{% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="padding:20px;background:#2c1f1f;border:1px solid #721c24;border-radius:6px;color:#f8d7da;margin-top:15px">
+                No matching Next of Kin records found for State Code <strong>"{{ query }}"</strong> under {{ current_user_lga }}.
+            </div>
+        {% endif %}
+    {% endif %}
+
+    <p style="margin-top:28px;font-weight:500">
+        <a href="{{ url_for('directory') }}">← Back to Directory</a> 
+        &nbsp; | &nbsp; 
+        <a href="{{ url_for('import_next_of_kin') }}">Import / Update Next of Kin</a>
+    </p>
+</section>
+{% endblock %}{% extends "base.html" %}
 {% block title %}Next of Kin Search | KATZIMS{% endblock %}
 {% block content %}
 <style>
