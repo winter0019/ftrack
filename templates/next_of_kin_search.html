@@ -1,135 +1,71 @@
 {% extends "base.html" %}
-
-{% block title %}Next of Kin Search | KATZIMS{% endblock %}
-
-{% block content %}
-<section class="card" style="max-width:1200px;margin:24px auto;padding:28px">
-    <h1>Search Next of Kin & Emergency Contacts</h1>
-    <p>Search by the Corps Member's <strong>State Code</strong>. Access is restricted to <strong>{{ current_user_lga }}</strong>.</p>
-
-    <form method="get" action="{{ url_for('next_of_kin_search') }}" style="margin:20px 0;display:flex;gap:12px;align-items:center">
-        <input 
-            type="text" 
-            name="q" 
-            value="{{ query or '' }}" 
-            placeholder="e.g. KT/26B/1603" 
-            required 
-            style="flex:1;padding:12px;border-radius:6px;border:1px solid #ccc;font-size:1rem"
-        >
-        <button class="cta" type="submit" style="padding:12px 24px;font-weight:600;cursor:pointer">Search</button>
-        {% if query %}
-            <a href="{{ url_for('next_of_kin_search') }}" style="color:#666;text-decoration:none;font-size:0.95rem">Clear</a>
-        {% endif %}
-    </form>
-
-    {% if query %}
-        <div style="margin-bottom:16px;font-weight:600;color:#ccc">
-            {{ results|length }} Result(s) Found
-        </div>
-
-        {% if results %}
-            <div style="overflow-x:auto">
-                <table style="width:100%;border-collapse:collapse;font-size:0.92rem;text-align:left">
-                    <thead>
-                        <tr style="border-bottom:2px solid #444">
-                            <th style="padding:12px">CORPS MEMBER</th>
-                            <th style="padding:12px">NOK 1</th>
-                            <th style="padding:12px">NOK 2</th>
-                            <th style="padding:12px">NOK 3</th>
-                            <th style="padding:12px">ICE</th>
-                            <th style="padding:12px">ICD</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in results %}
-                            <tr style="border-bottom:1px solid #333;vertical-align:top">
-                                <!-- Corps Member Info -->
-                                <td style="padding:12px">
-                                    <strong style="color:#fff">{{ row.corps_member_name }}</strong><br>
-                                    <small style="color:#aaa">{{ row.state_code }}</small>
-                                </td>
-
-                                <!-- NOK 1 -->
-                                <td style="padding:12px;line-height:1.5">
-                                    {% if row.nok1_name %}<strong style="color:#20c997">{{ row.nok1_name }}</strong><br>{% else %}—<br>{% endif %}
-                                    {% if row.nok1_rel %}{{ row.nok1_rel }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok1_phone %}{{ row.nok1_phone }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok1_address %}{{ row.nok1_address }}{% else %}—{% endif %}
-                                </td>
-
-                                <!-- NOK 2 -->
-                                <td style="padding:12px;line-height:1.5">
-                                    {% if row.nok2_name %}<strong style="color:#20c997">{{ row.nok2_name }}</strong><br>{% else %}—<br>{% endif %}
-                                    {% if row.nok2_rel %}{{ row.nok2_rel }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok2_phone %}{{ row.nok2_phone }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok2_address %}{{ row.nok2_address }}{% else %}—{% endif %}
-                                </td>
-
-                                <!-- NOK 3 -->
-                                <td style="padding:12px;line-height:1.5">
-                                    {% if row.nok3_name %}<strong style="color:#20c997">{{ row.nok3_name }}</strong><br>{% else %}—<br>{% endif %}
-                                    {% if row.nok3_rel %}{{ row.nok3_rel }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok3_phone %}{{ row.nok3_phone }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.nok3_address %}{{ row.nok3_address }}{% else %}—{% endif %}
-                                </td>
-
-                                <!-- ICE (Emergency) -->
-                                <td style="padding:12px;line-height:1.5">
-                                    {% if row.ice_name %}<strong style="color:#20c997">{{ row.ice_name }}</strong><br>{% else %}—<br>{% endif %}
-                                    {% if row.ice_rel %}{{ row.ice_rel }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.ice_phone %}{{ row.ice_phone }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.ice_address %}{{ row.ice_address }}{% else %}—{% endif %}
-                                </td>
-
-                                <!-- ICD (In Case of Death) -->
-                                <td style="padding:12px;line-height:1.5">
-                                    {% if row.icd_name %}<strong style="color:#20c997">{{ row.icd_name }}</strong><br>{% else %}—<br>{% endif %}
-                                    {% if row.icd_rel %}{{ row.icd_rel }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.icd_phone %}{{ row.icd_phone }}<br>{% else %}—<br>{% endif %}
-                                    {% if row.icd_address %}{{ row.icd_address }}{% else %}—{% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <div style="padding:20px;background:#2c1f1f;border:1px solid #721c24;border-radius:6px;color:#f8d7da;margin-top:15px">
-                No matching Next of Kin records found for State Code <strong>"{{ query }}"</strong> under {{ current_user_lga }}.
-            </div>
-        {% endif %}
-    {% endif %}
-
-    <p style="margin-top:28px;font-weight:500">
-        <a href="{{ url_for('directory') }}">← Back to Directory</a> 
-        &nbsp; | &nbsp; 
-        <a href="{{ url_for('import_next_of_kin') }}">Import / Update Next of Kin</a>
-    </p>
-</section>
-{% endblock %}{% extends "base.html" %}
 {% block title %}Next of Kin Search | KATZIMS{% endblock %}
 {% block content %}
 <style>
-.nok-page{max-width:1200px;margin:24px auto;padding:28px}
-.nok-search{display:flex;gap:10px;margin:20px 0}
-.nok-search input{flex:1;padding:14px;border:1px solid #ccd8d2;border-radius:10px;font-size:16px}
-.nok-table{overflow:auto;background:#fff;border:1px solid #e1eae5;border-radius:12px}
-.nok-table table{width:100%;min-width:1500px;border-collapse:collapse}
-.nok-table th,.nok-table td{padding:11px 12px;text-align:left;border-bottom:1px solid #edf2ef;vertical-align:top}
-.nok-table th{background:#f3f7f5;font-size:12px;text-transform:uppercase;white-space:nowrap}
-.contact-card{min-width:210px;line-height:1.45}
-.contact-card strong{display:block;color:#07543f;margin-bottom:3px}
-.contact-card span{display:block}
-.section-title{font-weight:700;color:#173d31;margin:0 0 5px}
-@media(max-width:650px){.nok-page{margin:10px auto;padding:16px 14px}.nok-search{flex-direction:column}}
+.nok-page {
+    max-width: 1280px;
+    margin: 24px auto;
+    padding: 28px;
+}
+.nok-search {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+}
+.nok-search input {
+    flex: 1;
+    padding: 14px;
+    border: 1px solid #ccd8d2;
+    border-radius: 10px;
+    font-size: 16px;
+}
+.nok-table {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid #e1eae5;
+    border-radius: 12px;
+}
+.nok-table table {
+    width: 100%;
+    min-width: 1050px;
+    border-collapse: collapse;
+}
+.nok-table th, .nok-table td {
+    padding: 13px 14px;
+    text-align: left;
+    border-bottom: 1px solid #edf2ef;
+    vertical-align: top;
+}
+.nok-table th {
+    background: #f3f7f5;
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #2c3e50;
+    white-space: nowrap;
+}
+.nok-stacked-cell {
+    line-height: 1.5;
+    font-size: 14px;
+}
+.nok-stacked-cell strong {
+    color: #1a8a59;
+    font-weight: 600;
+}
+@media(max-width:650px) {
+    .nok-page {
+        margin: 10px auto;
+        padding: 16px 14px;
+    }
+    .nok-search {
+        flex-direction: column;
+    }
+}
 </style>
 
 <section class="card nok-page">
     <h1>Search Next of Kin & Emergency Contacts</h1>
-    <p>
-        Search by the Corps Member's <strong>State Code</strong>.
-        Access is restricted to <strong>{{ assigned_lga }}</strong>.
-    </p>
+    <p>Search by the Corps Member's State Code. Access is restricted to <strong>{{ assigned_lga }}</strong>.</p>
 
     <form class="nok-search" method="get">
         <input name="q" value="{{ q }}" placeholder="e.g. KT/26B/2611" required>
@@ -144,86 +80,82 @@
         <table>
             <thead>
                 <tr>
-                    <th>State Code</th>
                     <th>Corps Member</th>
                     <th>NOK 1</th>
                     <th>NOK 2</th>
                     <th>NOK 3</th>
-                    <th>ICE</th>
-                    <th>ICD</th>
+                    <th>ICE (Emergency)</th>
+                    <th>ICD (In Case of Death)</th>
                     <th>LGA</th>
                 </tr>
             </thead>
             <tbody>
-            {% for r in rows %}
-                <tr>
-                    <td><strong>{{ r.state_code }}</strong></td>
-                    <td>{{ r.corps_member_name }}</td>
+                {% for r in rows %}
+                    <tr>
+                        <!-- Corps Member Details -->
+                        <td>
+                            <strong>{{ r.corps_member_name }}</strong><br>
+                            <small style="color:#666">{{ r.state_code }}</small>
+                        </td>
 
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_name or '—' }}</strong>
-                            <span>{{ r.relationship or '—' }}</span>
-                            <span>{{ r.phone or '—' }}</span>
-                            <span>{{ r.address or '—' }}</span>
-                        </div>
-                    </td>
+                        <!-- NOK 1 -->
+                        <td class="nok-stacked-cell">
+                            {% if r.nok1_name %}<strong>{{ r.nok1_name }}</strong><br>{% else %}—<br>{% endif %}
+                            {% if r.nok1_rel %}{{ r.nok1_rel }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok1_phone %}{{ r.nok1_phone }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok1_address %}{{ r.nok1_address }}{% else %}—{% endif %}
+                        </td>
 
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_2_name or '—' }}</strong>
-                            <span>{{ r.relationship_2 or '—' }}</span>
-                            <span>{{ r.phone_2 or '—' }}</span>
-                            <span>{{ r.address_2 or '—' }}</span>
-                        </div>
-                    </td>
+                        <!-- NOK 2 -->
+                        <td class="nok-stacked-cell">
+                            {% if r.nok2_name %}<strong>{{ r.nok2_name }}</strong><br>{% else %}—<br>{% endif %}
+                            {% if r.nok2_rel %}{{ r.nok2_rel }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok2_phone %}{{ r.nok2_phone }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok2_address %}{{ r.nok2_address }}{% else %}—{% endif %}
+                        </td>
 
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_3_name or '—' }}</strong>
-                            <span>{{ r.relationship_3 or '—' }}</span>
-                            <span>{{ r.phone_3 or '—' }}</span>
-                            <span>{{ r.address_3 or '—' }}</span>
-                        </div>
-                    </td>
+                        <!-- NOK 3 -->
+                        <td class="nok-stacked-cell">
+                            {% if r.nok3_name %}<strong>{{ r.nok3_name }}</strong><br>{% else %}—<br>{% endif %}
+                            {% if r.nok3_rel %}{{ r.nok3_rel }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok3_phone %}{{ r.nok3_phone }}<br>{% else %}—<br>{% endif %}
+                            {% if r.nok3_address %}{{ r.nok3_address }}{% else %}—{% endif %}
+                        </td>
 
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.ice_name or '—' }}</strong>
-                            <span>{{ r.ice_relationship or '—' }}</span>
-                            <span>{{ r.ice_phone or '—' }}</span>
-                            <span>{{ r.ice_address or '—' }}</span>
-                        </div>
-                    </td>
+                        <!-- ICE (In Case of Emergency) -->
+                        <td class="nok-stacked-cell">
+                            {% if r.ice_name %}<strong>{{ r.ice_name }}</strong><br>{% else %}—<br>{% endif %}
+                            {% if r.ice_rel %}{{ r.ice_rel }}<br>{% else %}—<br>{% endif %}
+                            {% if r.ice_phone %}{{ r.ice_phone }}<br>{% else %}—<br>{% endif %}
+                            {% if r.ice_address %}{{ r.ice_address }}{% else %}—{% endif %}
+                        </td>
 
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.icd_name or '—' }}</strong>
-                            <span>{{ r.icd_relationship or '—' }}</span>
-                            <span>{{ r.icd_phone or '—' }}</span>
-                            <span>{{ r.icd_address or '—' }}</span>
-                        </div>
-                    </td>
+                        <!-- ICD (In Case of Death) -->
+                        <td class="nok-stacked-cell">
+                            {% if r.icd_name %}<strong>{{ r.icd_name }}</strong><br>{% else %}—<br>{% endif %}
+                            {% if r.icd_rel %}{{ r.icd_rel }}<br>{% else %}—<br>{% endif %}
+                            {% if r.icd_phone %}{{ r.icd_phone }}<br>{% else %}—<br>{% endif %}
+                            {% if r.icd_address %}{{ r.icd_address }}{% else %}—{% endif %}
+                        </td>
 
-                    <td>{{ r.lga }}</td>
-                </tr>
-            {% else %}
-                <tr>
-                    <td colspan="8">
-                        {% if q %}
-                            No Next of Kin or emergency contact record was found for that State Code in your assigned LGA.
-                        {% else %}
-                            Enter a Corps Member State Code to search.
-                        {% endif %}
-                    </td>
-                </tr>
-            {% endfor %}
+                        <!-- LGA -->
+                        <td>{{ r.lga }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align:center;padding:20px;color:#666">
+                            {% if q %}
+                                No Next of Kin or contact records were found for that State Code in your assigned LGA.
+                            {% else %}
+                                Enter a Corps Member State Code to search.
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <p style="margin-top:20px">
-        <a href="{{ url_for('directory') }}">← Back to Directory</a>
-    </p>
+    <p style="margin-top:20px"><a href="{{ url_for('directory') }}">← Back to Directory</a></p>
 </section>
 {% endblock %}
