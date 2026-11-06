@@ -299,13 +299,32 @@ def init_db():
           relationship TEXT,
           phone TEXT,
           address TEXT,
-          next_of_kin_2_name TEXT, relationship_2 TEXT, phone_2 TEXT, address_2 TEXT,
-          next_of_kin_3_name TEXT, relationship_3 TEXT, phone_3 TEXT, address_3 TEXT,
-          ice_name TEXT, ice_relationship TEXT, ice_phone TEXT, ice_address TEXT,
-          icd_name TEXT, icd_relationship TEXT, icd_phone TEXT, icd_address TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
+        ALTER TABLE corps_member_next_of_kin
+          ALTER COLUMN next_of_kin_name DROP NOT NULL;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_name TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_relationship TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_phone TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_address TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_name TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_relationship TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_phone TEXT;
+        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_address TEXT;
+        CREATE INDEX IF NOT EXISTS ix_corps_member_nok_lga ON corps_member_next_of_kin(lga);
+        CREATE TABLE IF NOT EXISTS corps_member_contact_audit(
+          id BIGSERIAL PRIMARY KEY,
+          state_code TEXT NOT NULL,
+          lga TEXT NOT NULL,
+          action TEXT NOT NULL,
+          categories_updated TEXT NOT NULL,
+          source_files TEXT,
+          performed_by TEXT,
+          performed_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_contact_audit_state_code
+          ON corps_member_contact_audit(state_code);
 
         CREATE TABLE IF NOT EXISTS reposting_movements(
           id BIGSERIAL PRIMARY KEY, state_code TEXT NOT NULL, corps_member_name TEXT NOT NULL,
@@ -350,23 +369,6 @@ def init_db():
         END; $$ LANGUAGE plpgsql;
         DROP TRIGGER IF EXISTS trg_katzims_record_reposting ON corps_members;
         CREATE TRIGGER trg_katzims_record_reposting AFTER UPDATE OF ppa_id ON corps_members FOR EACH ROW EXECUTE FUNCTION katzims_record_reposting();
-
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS next_of_kin_2_name TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS relationship_2 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS phone_2 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS address_2 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS next_of_kin_3_name TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS relationship_3 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS phone_3 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS address_3 TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_name TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_relationship TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_phone TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS ice_address TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_name TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_relationship TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_phone TEXT;
-        ALTER TABLE corps_member_next_of_kin ADD COLUMN IF NOT EXISTS icd_address TEXT;
 
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_by TEXT;
         ALTER TABLE movements ADD COLUMN IF NOT EXISTS submitted_at TEXT;
@@ -1262,7 +1264,7 @@ def lgi_corps_search():
                 UPPER(REPLACE(cm.state_code, '/', '')) ILIKE %s OR
                 cm.full_name ILIKE %s OR 
                 COALESCE(cm.phone, '') ILIKE %s OR 
-                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\D', '', 'g') ILIKE %s OR
+                REGEXP_REPLACE(COALESCE(cm.phone, ''), '\\D', '', 'g') ILIKE %s OR
                 COALESCE(cm.discipline, '') ILIKE %s OR 
                 p.name ILIKE %s
             )"""
@@ -1307,9 +1309,13 @@ def lgi_corps_detail(state_code):
     with db() as c:
         row = c.execute("""
             SELECT cm.state_code, cm.full_name, cm.gender, cm.discipline, cm.batch, cm.stream,
-                   cm.phone, cm.status, cm.created_at, cm.updated_at, p.name AS ppa_name, p.lga
-            FROM corps_members cm 
+                   cm.phone, cm.status, cm.created_at, cm.updated_at, p.name AS ppa_name, p.lga,
+                   nok.next_of_kin_name, nok.relationship, nok.phone AS nok_phone, nok.address AS nok_address,
+                   nok.ice_name, nok.ice_relationship, nok.ice_phone, nok.ice_address,
+                   nok.icd_name, nok.icd_relationship, nok.icd_phone, nok.icd_address
+            FROM corps_members cm
             JOIN ppa_establishments p ON p.id = cm.ppa_id
+            LEFT JOIN corps_member_next_of_kin nok ON nok.state_code = cm.state_code
             WHERE cm.state_code = %s OR UPPER(REPLACE(cm.state_code, '/', '')) = %s
         """, (state_code, norm_code)).fetchone()
 
@@ -1674,42 +1680,115 @@ def inspections():
     return redirect(url_for("dashboard"))
 
 def _next_of_kin_fields(row, selected_lga=""):
-    """Normalize Auto Agent and manual NOK/ICE/ICD headers."""
+    """Read the original NYSC contact structure: Next of Kin, ICE and ICD."""
     state = _pick(row, "state_code", "statecode", "state code", "state-code", "code")
+    lga = _normalize_inspection_lga(_pick(
+        row, "lga", "local government", "local government area",
+        "assigned lga", "deployment lga"
+    )) or selected_lga
 
-    def pick(*names):
-        return _pick(row, *names).strip()
+    # Next of Kin: support both the original NYSC headings and the agent export.
+    nok_name = _pick(row,
+        "next of kin", "next of kin name", "next_of_kin_name",
+        "nok", "nok name", "nok 1", "next of kin 1", "next of kin 1 name"
+    )
+    nok_relationship = _pick(row,
+        "relationship", "relationship to corps member", "relation",
+        "next of kin relationship", "relationship 1", "nok relationship"
+    )
+    nok_phone = _pick(row,
+        "gsm no.", "gsm no", "gsm number", "gsmno",
+        "next of kin phone", "next_of_kin_phone", "next of kin gsm no.", "nok phone", "nok gsm no.",
+        "phone", "phone number", "phone 1", "phone 1 number"
+    )
+    nok_address = _pick(row,
+        "next of kin address", "nok address", "address",
+        "residential address", "address 1"
+    )
 
-    def contact(n):
-        if n == 1:
-            return {
-                "name": pick("next_of_kin_1", "next of kin 1", "next_of_kin_name", "next of kin name", "next_of_kin", "next of kin", "nok 1", "nok name", "nok"),
-                "relationship": pick("relationship_1", "relationship 1", "relationship", "next of kin relationship", "relationship to corps member"),
-                "phone": pick("phone_1", "phone 1", "phone", "next_of_kin_phone", "next of kin phone", "nok phone", "gsm", "phone number"),
-                "address": pick("address_1", "address 1", "address", "next_of_kin_address", "next of kin address", "nok address", "residential address"),
-            }
-        return {
-            "name": pick(f"next_of_kin_{n}", f"next of kin {n}", f"next_of_kin_{n}_name", f"next of kin {n} name", f"nok {n}", f"nok {n} name"),
-            "relationship": pick(f"relationship_{n}", f"relationship {n}", f"next of kin {n} relationship", f"nok {n} relationship"),
-            "phone": pick(f"phone_{n}", f"phone {n}", f"next_of_kin_{n}_phone", f"next of kin {n} phone", f"nok {n} phone"),
-            "address": pick(f"address_{n}", f"address {n}", f"next_of_kin_{n}_address", f"next of kin {n} address", f"nok {n} address"),
-        }
+    ice_name = _pick(row,
+        "in case of emergency", "in case of emergency name", "in case of emergency (ice)",
+        "emergency contact", "emergency contact (ice)", "emergency contact ice",
+        "emergency contact name", "ice", "ice name", "emergency name"
+    )
+    ice_relationship = _pick(row,
+        "emergency relationship", "emergency contact relationship",
+        "ice relationship", "relationship ice", "relationship 2"
+    )
+    ice_phone = _pick(row,
+        "emergency phone", "emergency phone number", "emergency contact phone",
+        "emergency contact gsm", "ice phone", "ice phone number", "phone ice", "phone 2"
+    )
+    ice_address = _pick(row,
+        "emergency address", "emergency contact address",
+        "ice address", "address ice", "address 2"
+    )
 
-    ice = {
-        "name": pick("emergency_contact_ice", "emergency contact ice", "emergency_contact", "emergency contact", "emergency contact name", "ice_name", "ice name"),
-        "relationship": pick("emergency_relationship", "emergency relationship", "emergency contact relationship", "ice_relationship", "ice relationship"),
-        "phone": pick("emergency_phone", "emergency phone", "emergency contact phone", "ice_phone", "ice phone"),
-        "address": pick("emergency_address", "emergency address", "emergency contact address", "ice_address", "ice address"),
+    icd_name = _pick(row,
+        "in case of death", "in case of death name", "in case of death (icd)",
+        "death contact", "death contact (icd)", "death contact name", "icd", "icd name"
+    )
+    icd_relationship = _pick(row,
+        "death contact relationship", "in case of death relationship",
+        "icd relationship", "relationship icd", "relationship 3"
+    )
+    icd_phone = _pick(row,
+        "death contact phone", "death contact phone number", "in case of death phone",
+        "icd phone", "icd phone number", "phone icd", "phone 3"
+    )
+    icd_address = _pick(row,
+        "death contact address", "in case of death address",
+        "icd address", "address icd", "address 3"
+    )
+
+    return {
+        "state": normalize_state_code(state),
+        "lga": (lga or "").strip(),
+        "nok_name": nok_name.strip(),
+        "nok_relationship": nok_relationship.strip(),
+        "nok_phone": nok_phone.strip(),
+        "nok_address": nok_address.strip(),
+        "ice_name": ice_name.strip(),
+        "ice_relationship": ice_relationship.strip(),
+        "ice_phone": ice_phone.strip(),
+        "ice_address": ice_address.strip(),
+        "icd_name": icd_name.strip(),
+        "icd_relationship": icd_relationship.strip(),
+        "icd_phone": icd_phone.strip(),
+        "icd_address": icd_address.strip(),
+        "legacy_nok2": " | ".join(filter(None, (
+            _pick(row, "nok 2", "nok 2 name", "next of kin 2", "next of kin 2 name"),
+            _pick(row, "relationship nok 2", "nok 2 relationship", "next of kin 2 relationship"),
+            _pick(row, "nok 2 phone", "next of kin 2 phone"),
+            _pick(row, "nok 2 address", "next of kin 2 address"),
+        ))),
+        "legacy_nok3": " | ".join(filter(None, (
+            _pick(row, "nok 3", "nok 3 name", "next of kin 3", "next of kin 3 name"),
+            _pick(row, "relationship nok 3", "nok 3 relationship", "next of kin 3 relationship"),
+            _pick(row, "nok 3 phone", "next of kin 3 phone"),
+            _pick(row, "nok 3 address", "next of kin 3 address"),
+        ))),
     }
-    icd = {
-        "name": pick("in_case_of_death_icd", "in case of death icd", "in_case_of_death", "in case of death", "death contact", "death contact name", "icd_name", "icd name"),
-        "relationship": pick("death_contact_relationship", "death contact relationship", "death relationship", "in case of death relationship", "icd_relationship", "icd relationship"),
-        "phone": pick("death_contact_phone", "death contact phone", "death phone", "in case of death phone", "icd_phone", "icd phone"),
-        "address": pick("death_contact_address", "death contact address", "death address", "in case of death address", "icd_address", "icd address"),
-    }
-    raw_lga = pick("lga", "local government", "local government area", "next of kin lga", "nok lga")
-    lga = _normalize_inspection_lga(raw_lga) or selected_lga
-    return {"state": state.strip().upper(), "nok1": contact(1), "nok2": contact(2), "nok3": contact(3), "ice": ice, "icd": icd, "lga": lga.strip()}
+
+
+def _has_contact_data(fields):
+    return any(fields.get(key) for key in (
+        "nok_name", "nok_relationship", "nok_phone", "nok_address",
+        "ice_name", "ice_relationship", "ice_phone", "ice_address",
+        "icd_name", "icd_relationship", "icd_phone", "icd_address"
+    ))
+
+
+def _merge_contact_rows(existing, incoming):
+    """Merge duplicate State Code rows; later nonblank values take precedence."""
+    if existing is None:
+        return dict(incoming)
+    merged = dict(existing)
+    for key, value in incoming.items():
+        if value not in (None, ""):
+            merged[key] = value
+    return merged
+
 
 @app.route("/directory")
 @login_required
@@ -1721,6 +1800,7 @@ def directory():
         return render_template("directory.html", mode="zi")
     flash("The general Corps Members Directory is not available to Supporting Staff.", "error")
     return redirect(url_for("dashboard"))
+
 
 @app.route("/next-of-kin-search")
 @login_required
@@ -1734,20 +1814,29 @@ def next_of_kin_search():
         flash("Your account has no valid assigned LGA. Contact the Administrator.", "error")
         return redirect(url_for("dashboard"))
     q = request.args.get("q", "").strip()
-    rows=[]
+    rows = []
     if q:
+        like = f"%{normalize_state_code(q)}%"
         with db() as c:
-            rows=c.execute("""SELECT nok.*,cm.full_name AS corps_member_name
-                FROM corps_member_next_of_kin nok JOIN corps_members cm ON cm.state_code=nok.state_code
+            rows = c.execute("""
+                SELECT nok.state_code,
+                       nok.next_of_kin_name, nok.relationship, nok.phone, nok.address,
+                       nok.ice_name, nok.ice_relationship, nok.ice_phone, nok.ice_address,
+                       nok.icd_name, nok.icd_relationship, nok.icd_phone, nok.icd_address,
+                       nok.lga, cm.full_name AS corps_member_name
+                FROM corps_member_next_of_kin nok
+                JOIN corps_members cm ON cm.state_code=nok.state_code
                 JOIN ppa_establishments p ON p.id=cm.ppa_id
-                WHERE p.lga=%s AND nok.lga=%s AND nok.state_code ILIKE %s
-                ORDER BY cm.full_name LIMIT 250""",(assigned_lga,assigned_lga,f"%{q}%")).fetchall()
-    return render_template("next_of_kin_search.html", assigned_lga=assigned_lga,q=q,rows=rows)
+                WHERE p.lga=%s AND nok.lga=%s
+                  AND UPPER(REPLACE(nok.state_code, '/', '')) ILIKE %s
+                ORDER BY cm.full_name LIMIT 250
+            """, (assigned_lga, assigned_lga, f"%{like.strip('%').replace('/', '')}%")).fetchall()
+    return render_template("next_of_kin_search.html", assigned_lga=assigned_lga, q=q, rows=rows)
+
 
 @app.route("/next-of-kin/import", methods=["GET", "POST"])
 @inspection_management_required
 def next_of_kin_import():
-    """Import/update NOK 1-3, ICE and ICD records from one or more files."""
     if request.method == "POST":
         uploads = [u for u in request.files.getlist("nok_file") if u and u.filename]
         selected_lga = (request.form.get("lga") or "").strip()
@@ -1755,100 +1844,192 @@ def next_of_kin_import():
             flash("Please select at least one CSV or XLSX file.", "error")
             return redirect(url_for("next_of_kin_import"))
         if selected_lga not in LGAS:
-            flash("Please select the LGA for this Next of Kin import.", "error")
+            flash("Please select the LGA for this contact import.", "error")
             return redirect(url_for("next_of_kin_import"))
 
-        processed = errors = 0
+        processed = 0
+        errors = 0
+        skipped_no_contacts = 0
+        legacy_extra_rows = 0
         error_rows = []
-        records = {}
+        merged = {}
+        source_filenames = []
+
         try:
             for upload in uploads:
                 filename = upload.filename
+                source_filenames.append(filename)
                 try:
                     rows = _read_corps_upload(upload)
                 except Exception as exc:
                     errors += 1
                     error_rows.append(f"{filename}: {exc}")
                     continue
-                for idx, row in enumerate(rows, start=2):
-                    processed += 1
-                    f = _next_of_kin_fields(row, selected_lga)
-                    if not f["state"]:
-                        errors += 1; error_rows.append(f"{filename} row {idx}: State Code required"); continue
-                    has_contact = any(f[g][k] for g in ("nok1","nok2","nok3","ice","icd") for k in ("name","relationship","phone","address"))
-                    if not has_contact:
-                        errors += 1; error_rows.append(f"{filename} row {idx}: no NOK/ICE/ICD contact data found"); continue
-                    if f["lga"] != selected_lga:
-                        errors += 1; error_rows.append(f"{filename} row {idx}: LGA '{f['lga']}' does not match selected LGA '{selected_lga}'"); continue
-                    if f["state"] not in records:
-                        records[f["state"]] = f
-                    else:
-                        old = records[f["state"]]
-                        for g in ("nok1","nok2","nok3","ice","icd"):
-                            for k in ("name","relationship","phone","address"):
-                                if f[g][k]: old[g][k] = f[g][k]
 
-            if not records:
-                flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
-                if error_rows: flash(" | ".join(error_rows[:8]), "error")
+                for idx, row in enumerate(rows, start=2):
+                    fields = _next_of_kin_fields(row, selected_lga)
+                    processed += 1
+
+                    if not fields["state"]:
+                        errors += 1
+                        error_rows.append(f"{filename} row {idx}: State Code is missing")
+                        continue
+                    if fields["lga"] != selected_lga:
+                        errors += 1
+                        error_rows.append(
+                            f"{filename} row {idx}: LGA '{fields['lga']}' does not match selected LGA '{selected_lga}'"
+                        )
+                        continue
+                    if fields.get("legacy_nok2") or fields.get("legacy_nok3"):
+                        legacy_extra_rows += 1
+                        extra_slots = []
+                        if fields.get("legacy_nok2"):
+                            extra_slots.append("NOK 2")
+                        if fields.get("legacy_nok3"):
+                            extra_slots.append("NOK 3")
+                        error_rows.append(
+                            f"{filename} row {idx}: {', '.join(extra_slots)} data detected; "
+                            "not imported into Next of Kin, ICE or ICD and requires manual review"
+                        )
+
+                    if not _has_contact_data(fields):
+                        skipped_no_contacts += 1
+                        continue
+
+                    merged[fields["state"]] = _merge_contact_rows(
+                        merged.get(fields["state"]), fields
+                    )
+
+            valid = list(merged.values())
+            if not valid:
+                flash(
+                    f"Import completed: {processed} rows processed, 0 new, 0 updated, "
+                    f"{skipped_no_contacts} rows skipped (no contact data), {legacy_extra_rows} rows flagged for legacy NOK 2/3 review, {errors} errors.",
+                    "warning" if not errors else "error"
+                )
+                if error_rows:
+                    flash(" | ".join(error_rows[:8]), "error")
                 return redirect(url_for("next_of_kin_import"))
 
             t = now()
+            actor = current_user() or {}
+            states = [item["state"] for item in valid]
             with db() as c:
-                states = list(records)
-                existing_members = c.execute("SELECT state_code FROM corps_members WHERE state_code = ANY(%s)", (states,)).fetchall()
-                existing_states = {str(r["state_code"]).strip().upper() for r in existing_members}
-                for st in states:
-                    if st not in existing_states:
-                        errors += 1; error_rows.append(f"{st}: Corps Member State Code does not exist in the directory")
-                records = {st:f for st,f in records.items() if st in existing_states}
+                existing_members = c.execute(
+                    "SELECT state_code FROM corps_members WHERE state_code = ANY(%s)",
+                    (states,)
+                ).fetchall()
+                existing_states = {r["state_code"] for r in existing_members}
+                missing_states = [state for state in states if state not in existing_states]
+                if missing_states:
+                    errors += len(missing_states)
+                    error_rows.extend([
+                        f"{state}: Corps Member State Code does not exist in the directory"
+                        for state in missing_states[:8]
+                    ])
+                    valid = [item for item in valid if item["state"] in existing_states]
 
-                if records:
-                    check = c.execute("SELECT cm.state_code,p.lga FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id WHERE cm.state_code = ANY(%s)", (list(records),)).fetchall()
-                    lga_map = {str(r["state_code"]).strip().upper(): str(r["lga"]).strip() for r in check}
-                    for st in list(records):
-                        if lga_map.get(st) != selected_lga:
-                            errors += 1; error_rows.append(f"{st}: Corps Member is not assigned to {selected_lga}"); del records[st]
+                if valid:
+                    lga_rows = c.execute("""
+                        SELECT cm.state_code, p.lga
+                        FROM corps_members cm
+                        JOIN ppa_establishments p ON p.id=cm.ppa_id
+                        WHERE cm.state_code = ANY(%s)
+                    """, ([item["state"] for item in valid],)).fetchall()
+                    lga_map = {r["state_code"]: r["lga"] for r in lga_rows}
+                    safe = []
+                    for item in valid:
+                        if lga_map.get(item["state"]) != selected_lga:
+                            errors += 1
+                            error_rows.append(
+                                f"{item['state']}: Corps Member is not assigned to {selected_lga}"
+                            )
+                        else:
+                            safe.append(item)
+                    valid = safe
 
-                if not records:
+                if not valid:
                     c.rollback()
-                    flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
-                    if error_rows: flash(" | ".join(error_rows[:8]), "error")
+                    flash(
+                        f"Import completed: {processed} rows processed, 0 new, 0 updated, "
+                        f"{skipped_no_contacts} skipped, {legacy_extra_rows} legacy NOK 2/3 rows flagged for review, {errors} errors.",
+                        "error"
+                    )
+                    if error_rows:
+                        flash(" | ".join(error_rows[:8]), "error")
                     return redirect(url_for("next_of_kin_import"))
 
-                states = list(records)
-                found = c.execute("SELECT state_code FROM corps_member_next_of_kin WHERE state_code = ANY(%s)", (states,)).fetchall()
-                existing_nok = {str(r["state_code"]).strip().upper() for r in found}
-                new_records = {st:f for st,f in records.items() if st not in existing_nok}
-                bad_new = [st for st,f in new_records.items() if not f["nok1"]["name"]]
-                for st in bad_new:
-                    errors += 1; error_rows.append(f"{st}: NOK 1 Name is required when creating a new record")
-                    records.pop(st, None)
-                if not records:
-                    c.rollback()
-                    flash(f"Import completed: {processed} rows processed, 0 new, 0 updated, {errors} errors.", "error")
-                    if error_rows: flash(" | ".join(error_rows[:8]), "error")
-                    return redirect(url_for("next_of_kin_import"))
+                existing_contacts = c.execute(
+                    "SELECT state_code FROM corps_member_next_of_kin WHERE state_code = ANY(%s)",
+                    ([item["state"] for item in valid],)
+                ).fetchall()
+                existing_contact_states = {r["state_code"] for r in existing_contacts}
+                new_count = sum(1 for item in valid if item["state"] not in existing_contact_states)
+                updated_count = len(valid) - new_count
 
-                columns = ["state_code","lga","next_of_kin_name","relationship","phone","address","next_of_kin_2_name","relationship_2","phone_2","address_2","next_of_kin_3_name","relationship_3","phone_3","address_3","ice_name","ice_relationship","ice_phone","ice_address","icd_name","icd_relationship","icd_phone","icd_address","created_at","updated_at"]
-                values=[]; params=[]
-                for f in records.values():
-                    values.append("(" + ",".join(["%s"]*len(columns)) + ")")
-                    params.extend([f["state"],selected_lga,f["nok1"]["name"],f["nok1"]["relationship"],f["nok1"]["phone"],f["nok1"]["address"],f["nok2"]["name"],f["nok2"]["relationship"],f["nok2"]["phone"],f["nok2"]["address"],f["nok3"]["name"],f["nok3"]["relationship"],f["nok3"]["phone"],f["nok3"]["address"],f["ice"]["name"],f["ice"]["relationship"],f["ice"]["phone"],f["ice"]["address"],f["icd"]["name"],f["icd"]["relationship"],f["icd"]["phone"],f["icd"]["address"],t,t])
-                updates=[]
-                for col in columns[1:-2]:
-                    updates.append(f"{col}=CASE WHEN NULLIF(EXCLUDED.{col},'') IS NULL THEN corps_member_next_of_kin.{col} ELSE EXCLUDED.{col} END")
-                updates.append("updated_at=EXCLUDED.updated_at")
-                c.execute(f"INSERT INTO corps_member_next_of_kin({','.join(columns)}) VALUES {','.join(values)} ON CONFLICT (state_code) DO UPDATE SET {','.join(updates)}", params)
+                for item in valid:
+                    c.execute("""
+                        INSERT INTO corps_member_next_of_kin(
+                            state_code, lga,
+                            next_of_kin_name, relationship, phone, address,
+                            ice_name, ice_relationship, ice_phone, ice_address,
+                            icd_name, icd_relationship, icd_phone, icd_address,
+                            created_at, updated_at
+                        ) VALUES (
+                            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                        )
+                        ON CONFLICT (state_code) DO UPDATE SET
+                            lga=EXCLUDED.lga,
+                            next_of_kin_name=COALESCE(NULLIF(EXCLUDED.next_of_kin_name,''), corps_member_next_of_kin.next_of_kin_name),
+                            relationship=COALESCE(NULLIF(EXCLUDED.relationship,''), corps_member_next_of_kin.relationship),
+                            phone=COALESCE(NULLIF(EXCLUDED.phone,''), corps_member_next_of_kin.phone),
+                            address=COALESCE(NULLIF(EXCLUDED.address,''), corps_member_next_of_kin.address),
+                            ice_name=COALESCE(NULLIF(EXCLUDED.ice_name,''), corps_member_next_of_kin.ice_name),
+                            ice_relationship=COALESCE(NULLIF(EXCLUDED.ice_relationship,''), corps_member_next_of_kin.ice_relationship),
+                            ice_phone=COALESCE(NULLIF(EXCLUDED.ice_phone,''), corps_member_next_of_kin.ice_phone),
+                            ice_address=COALESCE(NULLIF(EXCLUDED.ice_address,''), corps_member_next_of_kin.ice_address),
+                            icd_name=COALESCE(NULLIF(EXCLUDED.icd_name,''), corps_member_next_of_kin.icd_name),
+                            icd_relationship=COALESCE(NULLIF(EXCLUDED.icd_relationship,''), corps_member_next_of_kin.icd_relationship),
+                            icd_phone=COALESCE(NULLIF(EXCLUDED.icd_phone,''), corps_member_next_of_kin.icd_phone),
+                            icd_address=COALESCE(NULLIF(EXCLUDED.icd_address,''), corps_member_next_of_kin.icd_address),
+                            updated_at=EXCLUDED.updated_at
+                    """, (
+                        item["state"], item["lga"],
+                        item["nok_name"], item["nok_relationship"], item["nok_phone"], item["nok_address"],
+                        item["ice_name"], item["ice_relationship"], item["ice_phone"], item["ice_address"],
+                        item["icd_name"], item["icd_relationship"], item["icd_phone"], item["icd_address"],
+                        t, t
+                    ))
+                    updated_categories = []
+                    if any(item[k] for k in ("nok_name", "nok_relationship", "nok_phone", "nok_address")):
+                        updated_categories.append("Next of Kin")
+                    if any(item[k] for k in ("ice_name", "ice_relationship", "ice_phone", "ice_address")):
+                        updated_categories.append("ICE")
+                    if any(item[k] for k in ("icd_name", "icd_relationship", "icd_phone", "icd_address")):
+                        updated_categories.append("ICD")
+                    c.execute(
+                        """INSERT INTO corps_member_contact_audit(
+                            state_code,lga,action,categories_updated,source_files,performed_by,performed_at
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (
+                            item["state"], item["lga"], "Import / Update",
+                            ", ".join(updated_categories), ", ".join(source_filenames),
+                            actor.get("full_name", "System"), t
+                        )
+                    )
                 c.commit()
 
-            new_count=sum(1 for st in records if st not in existing_nok)
-            updated_count=sum(1 for st in records if st in existing_nok)
-            flash(f"Import completed: {processed} rows processed, {new_count} new, {updated_count} updated, {errors} errors.", "success" if errors==0 else "warning")
-            if error_rows: flash(" | ".join(error_rows[:8]), "error")
+            flash(
+                f"Contact import completed: {processed} rows processed, {new_count} new, "
+                f"{updated_count} updated, {skipped_no_contacts} skipped (no contact data), {legacy_extra_rows} legacy NOK 2/3 rows flagged for review, {errors} errors.",
+                "success" if errors == 0 else "warning"
+            )
+            if error_rows:
+                flash(" | ".join(error_rows[:8]), "error")
         except Exception as exc:
-            flash(f"Next of Kin / ICE / ICD import failed: {exc}", "error")
+            flash(f"Contact import failed: {exc}", "error")
         return redirect(url_for("next_of_kin_import"))
+
     return render_template("next_of_kin_import.html", lgas=LGAS)
 
 @app.route("/corps-members/import", methods=["GET", "POST"])
