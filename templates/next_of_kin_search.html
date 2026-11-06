@@ -1,121 +1,73 @@
 {% extends "base.html" %}
-{% block title %}Next of Kin Search | KATZIMS{% endblock %}
+{% block title %}Next of Kin, ICE & ICD Search | KATZIMS{% endblock %}
 {% block content %}
 <style>
-.nok-page{max-width:1200px;margin:24px auto;padding:28px}
-.nok-search{display:flex;gap:10px;margin:20px 0}
-.nok-search input{flex:1;padding:14px;border:1px solid #ccd8d2;border-radius:10px;font-size:16px}
-.nok-table{overflow:auto;background:#fff;border:1px solid #e1eae5;border-radius:12px}
-.nok-table table{width:100%;min-width:1500px;border-collapse:collapse}
-.nok-table th,.nok-table td{padding:11px 12px;text-align:left;border-bottom:1px solid #edf2ef;vertical-align:top}
-.nok-table th{background:#f3f7f5;font-size:12px;text-transform:uppercase;white-space:nowrap}
-.contact-card{min-width:210px;line-height:1.45}
-.contact-card strong{display:block;color:#07543f;margin-bottom:3px}
-.contact-card span{display:block}
-.section-title{font-weight:700;color:#173d31;margin:0 0 5px}
-@media(max-width:650px){.nok-page{margin:10px auto;padding:16px 14px}.nok-search{flex-direction:column}}
+.contact-search{max-width:1450px;margin:24px auto;padding:clamp(16px,2.5vw,28px)}
+.contact-search .searchbar{display:flex;gap:10px;margin:20px 0}
+.contact-search input{flex:1;min-width:0;padding:13px 14px;border:1px solid #cbd8d0;border-radius:9px;font-size:16px}
+.contact-search button{border:0;border-radius:9px;padding:12px 22px;background:#15935f;color:#fff;font-weight:750}
+.contact-search .table-wrap{overflow-x:auto;border:1px solid #dce7e0;border-radius:12px}
+.contact-search table{width:100%;min-width:1100px;border-collapse:collapse;background:#fff}
+.contact-search th,.contact-search td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid #e9efeb}
+.contact-search th{background:#f2f7f4;color:#315542;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+.contact-search td strong{display:block;color:#176b4a;margin-bottom:4px}
+.contact-search .contact-meta{display:block;color:#4d5f55;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.contact-search .empty{color:#89958e}
+.contact-search .back{display:inline-block;margin-top:20px;color:#08744f;font-weight:650}
+@media(max-width:650px){.contact-search .searchbar{flex-direction:column}.contact-search button{width:100%}}
 </style>
-
-<section class="card nok-page">
-    <h1>Search Next of Kin & Emergency Contacts</h1>
-    <p>
-        Search by the Corps Member's <strong>State Code</strong>.
-        Access is restricted to <strong>{{ assigned_lga }}</strong>.
-    </p>
-
-    <form class="nok-search" method="get">
-        <input name="q" value="{{ q }}" placeholder="e.g. KT/26B/2611" required>
-        <button class="cta" type="submit">Search</button>
-    </form>
-
-    {% if q %}
-        <p><strong>{{ rows|length }}</strong> result(s)</p>
-    {% endif %}
-
-    <div class="nok-table">
-        <table>
-            <thead>
-                <tr>
-                    <th>State Code</th>
-                    <th>Corps Member</th>
-                    <th>NOK 1</th>
-                    <th>NOK 2</th>
-                    <th>NOK 3</th>
-                    <th>ICE</th>
-                    <th>ICD</th>
-                    <th>LGA</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for r in rows %}
-                <tr>
-                    <td><strong>{{ r.state_code }}</strong></td>
-                    <td>{{ r.corps_member_name }}</td>
-
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_name or '—' }}</strong>
-                            <span>{{ r.relationship or '—' }}</span>
-                            <span>{{ r.phone or '—' }}</span>
-                            <span>{{ r.address or '—' }}</span>
-                        </div>
-                    </td>
-
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_2_name or '—' }}</strong>
-                            <span>{{ r.relationship_2 or '—' }}</span>
-                            <span>{{ r.phone_2 or '—' }}</span>
-                            <span>{{ r.address_2 or '—' }}</span>
-                        </div>
-                    </td>
-
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.next_of_kin_3_name or '—' }}</strong>
-                            <span>{{ r.relationship_3 or '—' }}</span>
-                            <span>{{ r.phone_3 or '—' }}</span>
-                            <span>{{ r.address_3 or '—' }}</span>
-                        </div>
-                    </td>
-
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.ice_name or '—' }}</strong>
-                            <span>{{ r.ice_relationship or '—' }}</span>
-                            <span>{{ r.ice_phone or '—' }}</span>
-                            <span>{{ r.ice_address or '—' }}</span>
-                        </div>
-                    </td>
-
-                    <td>
-                        <div class="contact-card">
-                            <strong>{{ r.icd_name or '—' }}</strong>
-                            <span>{{ r.icd_relationship or '—' }}</span>
-                            <span>{{ r.icd_phone or '—' }}</span>
-                            <span>{{ r.icd_address or '—' }}</span>
-                        </div>
-                    </td>
-
-                    <td>{{ r.lga }}</td>
-                </tr>
-            {% else %}
-                <tr>
-                    <td colspan="8">
-                        {% if q %}
-                            No Next of Kin or emergency contact record was found for that State Code in your assigned LGA.
-                        {% else %}
-                            Enter a Corps Member State Code to search.
-                        {% endif %}
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <p style="margin-top:20px">
-        <a href="{{ url_for('directory') }}">← Back to Directory</a>
-    </p>
+<section class="card contact-search">
+  <h1>Search Next of Kin &amp; Emergency Contacts</h1>
+  <p>Search by the Corps Member's <strong>State Code</strong>. Access is restricted to <strong>{{ assigned_lga }}</strong>.</p>
+  <form class="searchbar" method="get">
+    <input name="q" value="{{ q }}" placeholder="e.g. KT/26B/2611" required>
+    <button type="submit">Search</button>
+  </form>
+  {% if q %}<p><strong>{{ rows|length }}</strong> result(s)</p>{% endif %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>State Code</th><th>Corps Member</th><th>Next of Kin</th><th>ICE</th><th>ICD</th><th>LGA</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.state_code }}</strong></td>
+          <td>{{ r.corps_member_name }}</td>
+          <td>
+            {% if r.next_of_kin_name %}
+              <strong>{{ r.next_of_kin_name }}</strong>
+              <span class="contact-meta">{{ r.relationship or 'Relationship not supplied' }}</span>
+              <span class="contact-meta">{{ r.phone or 'Phone not supplied' }}</span>
+              <span class="contact-meta">{{ r.address or 'Address not supplied' }}</span>
+            {% else %}<span class="empty">Not provided</span>{% endif %}
+          </td>
+          <td>
+            {% if r.ice_name %}
+              <strong>{{ r.ice_name }}</strong>
+              <span class="contact-meta">{{ r.ice_relationship or 'Relationship not supplied' }}</span>
+              <span class="contact-meta">{{ r.ice_phone or 'Phone not supplied' }}</span>
+              <span class="contact-meta">{{ r.ice_address or 'Address not supplied' }}</span>
+            {% else %}<span class="empty">Not provided</span>{% endif %}
+          </td>
+          <td>
+            {% if r.icd_name %}
+              <strong>{{ r.icd_name }}</strong>
+              <span class="contact-meta">{{ r.icd_relationship or 'Relationship not supplied' }}</span>
+              <span class="contact-meta">{{ r.icd_phone or 'Phone not supplied' }}</span>
+              <span class="contact-meta">{{ r.icd_address or 'Address not supplied' }}</span>
+            {% else %}<span class="empty">Not provided</span>{% endif %}
+          </td>
+          <td>{{ r.lga }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">{% if q %}No contact record was found for that State Code in your assigned LGA.{% else %}Enter a Corps Member State Code to search.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <a class="back" href="{{ url_for('directory') }}">← Back to Directory</a>
 </section>
 {% endblock %}
