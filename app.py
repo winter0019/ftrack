@@ -377,6 +377,28 @@ def init_db():
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_by TEXT;
         ALTER TABLE files ADD COLUMN IF NOT EXISTS put_away_at TEXT;
         CREATE INDEX IF NOT EXISTS ix_files_state_code ON files(state_code);
+
+        CREATE TABLE IF NOT EXISTS corps_member_batch_archives (
+          id BIGSERIAL PRIMARY KEY, batch_value TEXT NOT NULL UNIQUE,
+          batch_label TEXT NOT NULL, member_count INTEGER NOT NULL DEFAULT 0,
+          archived_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          archived_by_name TEXT NOT NULL, archived_at TEXT NOT NULL,
+          restored_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          restored_by_name TEXT, restored_at TEXT, status TEXT NOT NULL DEFAULT 'Archived'
+        );
+        CREATE TABLE IF NOT EXISTS corps_member_batch_archive_members (
+          id BIGSERIAL PRIMARY KEY,
+          archive_id BIGINT NOT NULL REFERENCES corps_member_batch_archives(id) ON DELETE CASCADE,
+          corps_member_id BIGINT NOT NULL REFERENCES corps_members(id) ON DELETE RESTRICT,
+          previous_status TEXT, UNIQUE(archive_id, corps_member_id)
+        );
+        CREATE TABLE IF NOT EXISTS corps_member_batch_audit (
+          id BIGSERIAL PRIMARY KEY, batch_value TEXT NOT NULL, batch_label TEXT NOT NULL,
+          action TEXT NOT NULL, member_count INTEGER NOT NULL,
+          actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+          actor_name TEXT NOT NULL, actor_role TEXT NOT NULL, created_at TEXT NOT NULL, details TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ix_batch_archive_status ON corps_member_batch_archives(status);
         """)
 
 def is_health_course(discipline):
@@ -3234,6 +3256,119 @@ def monthly_clearance_reminders():
                     if cur.fetchone():sent+=1
         c.commit()
     return {"status":"ok","notifications_created":sent}
+
+
+
+# CORPS MEMBER BATCH MANAGEMENT
+BATCH_MANAGEMENT_ROLES = ("Administrator", "Zonal Inspector")
+
+def batch_management_label(value):
+    raw = (value or "").strip()
+    m = re.fullmatch(r"(?:20)?(\d{2})\s*[-_/ ]?\s*([ABC])", raw, re.I)
+    if m:
+        return f"20{m.group(1)} Batch {m.group(2).upper()}"
+    m = re.fullmatch(r"Batch[_ -]?([ABC])", raw, re.I)
+    if m:
+        return f"Batch {m.group(1).upper()} (year not specified)"
+    return raw or "Batch not specified"
+
+def batch_management_user():
+    u = current_user()
+    if not u or u["role"] not in BATCH_MANAGEMENT_ROLES:
+        flash("Only the Zonal Inspector or Administrator may manage Corps Member batches.", "error")
+        return None
+    return u
+
+@app.route("/batch-management")
+@login_required
+def batch_management():
+    u = batch_management_user()
+    if not u: return redirect(url_for("dashboard"))
+    with db() as c:
+        rows = c.execute("""
+          SELECT cm.batch AS batch_value, COUNT(*) AS total_members,
+            COUNT(*) FILTER (WHERE COALESCE(cm.status,'Active') ILIKE 'Active') AS active_members,
+            COALESCE(a.status,'Active') AS archive_status
+          FROM corps_members cm LEFT JOIN corps_member_batch_archives a ON a.batch_value=cm.batch
+          GROUP BY cm.batch,a.status ORDER BY cm.batch DESC NULLS LAST
+        """).fetchall()
+        audit = c.execute("""SELECT batch_label,action,member_count,actor_name,actor_role,created_at
+          FROM corps_member_batch_audit ORDER BY id DESC LIMIT 50""").fetchall()
+    batches=[]
+    for row in rows:
+        item=dict(row); item["batch_label"]=batch_management_label(item["batch_value"]); batches.append(item)
+    return render_template("batch_management.html",batches=batches,audit=audit)
+
+@app.route("/batch-management/archive",methods=["POST"])
+@login_required
+def batch_management_archive():
+    u=batch_management_user()
+    if not u:return redirect(url_for("dashboard"))
+    value=(request.form.get("batch_value") or "").strip()
+    if not value or request.form.get("confirmation")!="ARCHIVE":
+        flash("Batch archive confirmation was not valid.","error"); return redirect(url_for("batch_management"))
+    with db() as c:
+        c.execute("LOCK TABLE corps_members IN SHARE ROW EXCLUSIVE MODE")
+        old=c.execute("SELECT * FROM corps_member_batch_archives WHERE batch_value=%s FOR UPDATE",(value,)).fetchone()
+        if old and old["status"]=="Archived":
+            flash("This batch is already archived.","error"); return redirect(url_for("batch_management"))
+        members=c.execute("SELECT id,status FROM corps_members WHERE batch=%s ORDER BY id FOR UPDATE",(value,)).fetchall()
+        if not members:
+            flash("No Corps Members were found in this batch.","error"); return redirect(url_for("batch_management"))
+        label=batch_management_label(value); t=now()
+        if old:
+            aid=old["id"]
+            c.execute("""UPDATE corps_member_batch_archives SET batch_label=%s,member_count=%s,
+              archived_by=%s,archived_by_name=%s,archived_at=%s,restored_by=NULL,
+              restored_by_name=NULL,restored_at=NULL,status='Archived' WHERE id=%s""",
+              (label,len(members),u["id"],u["full_name"],t,aid))
+        else:
+            aid=c.execute("""INSERT INTO corps_member_batch_archives
+              (batch_value,batch_label,member_count,archived_by,archived_by_name,archived_at,status)
+              VALUES(%s,%s,%s,%s,%s,%s,'Archived') RETURNING id""",
+              (value,label,len(members),u["id"],u["full_name"],t)).fetchone()["id"]
+        c.execute("DELETE FROM corps_member_batch_archive_members WHERE archive_id=%s",(aid,))
+        for m in members:
+            c.execute("""INSERT INTO corps_member_batch_archive_members
+              (archive_id,corps_member_id,previous_status) VALUES(%s,%s,%s)""",(aid,m["id"],m["status"]))
+        c.execute("UPDATE corps_members SET status='Archived',updated_at=%s WHERE batch=%s",(t,value))
+        c.execute("""INSERT INTO corps_member_batch_audit
+          (batch_value,batch_label,action,member_count,actor_id,actor_name,actor_role,created_at,details)
+          VALUES(%s,%s,'Archived',%s,%s,%s,%s,%s,%s)""",
+          (value,label,len(members),u["id"],u["full_name"],u["role"],t,"Original statuses saved for restoration."))
+        c.commit()
+    flash(f"{label} archived. {len(members)} member records preserved and removed from active operations.","success")
+    return redirect(url_for("batch_management"))
+
+@app.route("/batch-management/restore",methods=["POST"])
+@login_required
+def batch_management_restore():
+    u=batch_management_user()
+    if not u:return redirect(url_for("dashboard"))
+    value=(request.form.get("batch_value") or "").strip()
+    if not value or request.form.get("confirmation")!="RESTORE":
+        flash("Batch restore confirmation was not valid.","error"); return redirect(url_for("batch_management"))
+    with db() as c:
+        archive=c.execute("""SELECT * FROM corps_member_batch_archives
+          WHERE batch_value=%s AND status='Archived' FOR UPDATE""",(value,)).fetchone()
+        if not archive:
+            flash("No archived batch was found.","error"); return redirect(url_for("batch_management"))
+        snapshots=c.execute("""SELECT corps_member_id,previous_status FROM corps_member_batch_archive_members
+          WHERE archive_id=%s""",(archive["id"],)).fetchall()
+        t=now(); restored=0
+        for m in snapshots:
+            result=c.execute("""UPDATE corps_members SET status=%s,updated_at=%s
+              WHERE id=%s AND status='Archived'""",(m["previous_status"] or "Active",t,m["corps_member_id"]))
+            restored+=result.rowcount
+        c.execute("""UPDATE corps_member_batch_archives SET status='Restored',restored_by=%s,
+          restored_by_name=%s,restored_at=%s WHERE id=%s""",(u["id"],u["full_name"],t,archive["id"]))
+        c.execute("""INSERT INTO corps_member_batch_audit
+          (batch_value,batch_label,action,member_count,actor_id,actor_name,actor_role,created_at,details)
+          VALUES(%s,%s,'Restored',%s,%s,%s,%s,%s,%s)""",
+          (value,archive["batch_label"],restored,u["id"],u["full_name"],u["role"],t,"Original statuses restored."))
+        c.commit()
+    flash(f"{archive['batch_label']} restored. {restored} member records returned to their previous statuses.","success")
+    return redirect(url_for("batch_management"))
 
 
 init_db()
