@@ -1,43 +1,616 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b3f30">
 <title>{% block title %}NYSC Katsina Zonal Office{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+
 <style>
-.account{display:flex;align-items:center;gap:10px;margin-left:10px;padding-left:14px;border-left:1px solid rgba(255,255,255,.22)}
-.account-text{display:flex;flex-direction:column;line-height:1.15;text-align:right}.account-text strong{font-size:13px}.account-text small{font-size:11px;opacity:.75;margin-top:3px}
-.account a{color:#fff;text-decoration:none;font-size:12px}.logout{padding:7px 10px;border:1px solid rgba(255,255,255,.3);border-radius:8px}
-.admin-link{font-size:13px!important;font-weight:700}
-.mobile-account{display:none}
-@media(max-width:760px){.account{display:none}.mobile-account{display:block;padding:12px 0;border-top:1px solid var(--line);margin-top:8px}.mobile-account strong{display:block}.mobile-account small{color:var(--muted);display:block;margin:3px 0 8px}.mobile-account a{margin-right:12px}}
+:root {
+  --nav-green: #0b3f30;
+  --nav-green-light: #159565;
+  --line: #dce7e1;
+  --muted: #6d8178;
+}
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f3f7f5;
+  color: #192b32;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+.top {
+  position: relative;
+  z-index: 100;
+  width: 100%;
+  min-height: 130px;
+  padding: 18px clamp(22px, 2.7vw, 56px);
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 2vw, 42px);
+  background: linear-gradient(105deg, #003d2f 0%, #064333 52%, #003c2f 100%);
+  color: white;
+  box-shadow: 0 8px 22px rgba(0, 43, 32, .22);
+  border-bottom: 1px solid rgba(224, 184, 54, .18);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 340px;
+  padding-right: 26px;
+  border-right: 3px solid #d7b333;
+  color: inherit;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.nysc-logo {
+  object-fit: contain;
+  display: block;
+}
+.nav-logo {
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+}
+.brand span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.brand strong {
+  font-size: clamp(19px, 1.35vw, 28px);
+  line-height: 1.2;
+  font-weight: 850;
+  letter-spacing: -.025em;
+}
+.brand small {
+  color: #c3d7cf;
+  font-size: clamp(14px, .95vw, 21px);
+  line-height: 1.3;
+}
+.top nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(14px, 1.65vw, 34px);
+  margin-left: auto;
+  min-width: 0;
+}
+.top nav > a {
+  color: #fff;
+  text-decoration: none;
+  font-size: clamp(14px, 1.05vw, 21px);
+  font-weight: 750;
+  padding: 13px 0;
+  white-space: nowrap;
+}
+.top nav > a:hover { color: #c9eadb; }
+.top nav > a.cta,
+.cta {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 19px 26px;
+  border: 0;
+  border-radius: 17px;
+  background: var(--nav-green-light);
+  color: #fff;
+  font-size: clamp(15px, 1.05vw, 21px);
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.top nav > a.cta:hover, .cta:hover { background: #117e56; color: #fff; }
+.account {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: 2px;
+  padding-left: 26px;
+  border-left: 1px solid #ffffff30;
+  min-width: 0;
+}
+.account::before {
+  content: "ID";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border: 2px solid #d8b63b;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 800;
+}
+.account-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.2;
+  text-align: left;
+  max-width: 205px;
+}
+.account-text strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.account-text small {
+  font-size: 12px;
+  color: #c5d8d0;
+  line-height: 1.35;
+}
+.account a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 12px;
+}
+.logout {
+  padding: 17px 20px;
+  border: 1px solid #ffffff55;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+.admin-link { font-weight: 750 !important; }
+.menu {
+  display: none;
+  border: 1px solid #ffffff50;
+  border-radius: 8px;
+  color: #fff;
+  background: transparent;
+  padding: 7px 10px;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+/* Main content */
+.wrap {
+  width: min(1440px, calc(100% - 56px));
+  min-height: calc(100vh - 145px);
+  margin: 0 auto;
+  padding: 28px 0 36px;
+}
+.wrap .head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.wrap .head h1 {
+  margin: 7px 0 9px;
+  font-size: clamp(27px, 3vw, 36px);
+  line-height: 1.2;
+}
+.wrap .head p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #50635d;
+}
+.wrap .section {
+  margin: 20px 0;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.wrap .section h2 {
+  margin: 0 0 12px;
+  font-size: 21px;
+}
+.wrap .stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0 24px;
+}
+.wrap .stat {
+  min-width: 0;
+  padding: 17px 19px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 18px #173d2c08;
+}
+.wrap .stat small {
+  color: #71827b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.wrap .stat strong {
+  display: block;
+  margin-top: 8px;
+  color: #07543f;
+  font-size: 29px;
+  line-height: 1.15;
+}
+.wrap .branches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.wrap .branches > a {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: #184536;
+  text-decoration: none;
+}
+.wrap .branches > a:hover {
+  border-color: #83bca2;
+  background: #f8fcf9;
+}
+.wrap .branches span { color: var(--muted); font-size: 13px; }
+
+/* Flash notices */
+.flash {
+  padding: 11px 14px;
+  margin: 0 0 16px;
+  border: 1px solid #d5e7dd;
+  border-radius: 9px;
+  background: #eaf7ef;
+  color: #176344;
+  font-size: 14px;
+}
+.flash.error, .flash.danger {
+  background: #fff0ee;
+  border-color: #f0d1cd;
+  color: #9d3025;
+}
+
+.mobile-account { display: none; }
+
+footer {
+  width: min(1440px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 16px 0 22px;
+  color: #70817a;
+  font-size: 12px;
+  border-top: 1px solid #e1eae5;
+}
+
+@media (max-width: 1100px) {
+  .top { gap: 14px; min-height: 104px; }
+  .brand { min-width: 255px; padding-right: 16px; }
+  .nav-logo { width: 58px; height: 58px; }
+  .top nav { gap: 12px; }
+  .account-text { max-width: 145px; }
+  .account-text strong { font-size: 12px; }
+  .wrap .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .top {
+    min-height: 68px;
+    padding: 11px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .brand { min-width: 0; margin-right: auto; padding-right: 0; border-right: 0; }
+  .nav-logo { width: 42px; height: 42px; }
+  .brand strong { font-size: 15px; }
+  .brand small { font-size: 11px; }
+  .menu { display: block; }
+  .top nav {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 200;
+    width: 100%;
+    margin: 0;
+    padding: 16px 20px 22px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    background: #064a38;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+  }
+  .top nav.is-open,
+  .top.menu-open nav,
+  body.open .top nav { display: flex !important; }
+  .top nav > a { padding: 10px 12px; white-space: normal; border-radius: 6px; }
+  .top nav > a:hover { background: rgba(255,255,255,0.08); }
+  .top nav > a.cta { justify-content: flex-start; }
+  .account { display: none; }
+  .account::before { display: none; }
+  .mobile-account {
+    display: block;
+    padding: 12px 14px;
+    margin: 0 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+  .mobile-account strong { display: block; font-size: 13px; }
+  .mobile-account small {
+    display: block;
+    color: var(--muted);
+    margin: 4px 0 9px;
+    font-size: 12px;
+  }
+  .mobile-account a {
+    color: #087653;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 14px;
+    text-decoration: none;
+  }
+  .wrap {
+    width: calc(100% - 28px);
+    min-height: calc(100vh - 135px);
+    padding: 20px 0 28px;
+  }
+  .wrap .head { align-items: stretch; }
+  .wrap .head .cta { align-self: flex-start; }
+  .wrap .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .wrap .stat { padding: 14px; }
+  .wrap .stat strong { font-size: 25px; }
+  .wrap .branches { grid-template-columns: 1fr; }
+  .wrap .section { padding: 15px; }
+  footer { width: calc(100% - 28px); line-height: 1.5; }
+}
+@media (max-width: 380px) {
+  .wrap .stats { grid-template-columns: 1fr 1fr; }
+  .wrap .head h1 { font-size: 25px; }
+}
+
+/* Cross-page responsive safeguards */
+html { width: 100%; max-width: 100%; overflow-x: clip; }
+body { width: 100%; max-width: 100%; overflow-x: clip; }
+img, video, iframe, canvas, svg { max-width: 100%; }
+.wrap, .wrap * { min-width: 0; }
+.wrap { max-width: 1440px; }
+.wrap input, .wrap select, .wrap textarea, .wrap button { max-width: 100%; }
+.wrap input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.wrap select, .wrap textarea { min-width: 0; }
+.wrap form { max-width: 100%; }
+.wrap table { width: 100%; border-collapse: collapse; }
+.wrap .table, .wrap .records-wrap, .wrap .table-wrap,
+.wrap .table-responsive, .wrap .overflow-x-auto {
+  display: block; width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.wrap table { max-width: 100%; }
+.wrap th, .wrap td { overflow-wrap: anywhere; }
+.wrap .section, .wrap .card, .wrap .stat, .wrap .branches > a { overflow-wrap: anywhere; }
+.wrap .head > *, .wrap .section > *, .wrap form > * { max-width: 100%; }
+
+@media (max-width: 760px) {
+  .top { width: 100%; max-width: 100%; }
+  .top nav { width: 100%; max-width: 100%; }
+  .top nav > a { display: flex; align-items: center; width: 100%; }
+  .top nav > a.cta { width: 100%; }
+  .wrap {
+    width: calc(100% - 28px) !important;
+    max-width: calc(100% - 28px) !important;
+    padding: 18px 0 28px !important;
+  }
+  .wrap .head { gap: 14px; }
+  .wrap .head h1 { overflow-wrap: anywhere; }
+  .wrap .head .cta { width: auto; max-width: 100%; white-space: normal; }
+  .wrap .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .wrap .stat { padding: 13px !important; }
+  .wrap .stat small { font-size: 12px; }
+  .wrap .stat strong { font-size: 24px !important; }
+  .wrap .branches { grid-template-columns: 1fr !important; }
+  .wrap form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .wrap form label { max-width: 100%; }
+  .wrap form input, .wrap form select, .wrap form textarea { width: 100%; max-width: 100%; }
+  .wrap form button, .wrap form .cta { max-width: 100%; }
+  .wrap .table table, .wrap .records-wrap table,
+  .wrap .table-wrap table, .wrap .table-responsive table {
+    min-width: 680px; width: max-content;
+  }
+  footer {
+    width: calc(100% - 28px) !important; max-width: calc(100% - 28px) !important; overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 420px) {
+  .wrap .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .wrap .head h1 { font-size: 24px !important; }
+  .wrap .section { padding: 13px !important; }
+  .mobile-account { overflow-wrap: anywhere; }
+}
+
+/* Navigation visibility fix: switch to a menu before the full header gets crowded */
+@media (min-width: 761px) and (max-width: 1250px) {
+  .top {
+    min-height: 76px;
+    padding: 10px 22px;
+    gap: 14px;
+    flex-wrap: nowrap;
+  }
+  .brand { min-width: 0; gap: 10px; }
+  .brand strong { font-size: 15px; }
+  .brand small { font-size: 11px; }
+  .nav-logo { width: 40px; height: 40px; }
+  .menu { display: block; flex-shrink: 0; margin-left: auto; }
+  .top nav {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 200;
+    width: 100%;
+    margin: 0;
+    padding: 14px 22px 20px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    background: #064a38;
+    border-top: 1px solid rgba(255,255,255,.15);
+    box-shadow: 0 12px 30px rgba(0,0,0,.25);
+  }
+  .top nav.is-open,
+  .top.menu-open nav,
+  body.open .top nav { display: flex !important; }
+  .top nav > a { display: flex; width: 100%; padding: 10px 12px; white-space: normal; border-radius: 7px; }
+  .top nav > a.cta { width: 100%; justify-content: flex-start; }
+  .account { display: none !important; }
+  .mobile-account { display: block; }
+}
+
 </style>
 </head>
+
 <body>
-<header class="top">
-  <a class="brand" href="{{ url_for('dashboard') }}"><b>NYSC</b><span><strong>Katsina Zonal Office</strong><small>File Movement Register</small></span></a>
-  <button class="menu" aria-label="Open navigation" onclick="document.body.classList.toggle('open')">☰</button>
-  <nav>
+<header class="top" id="siteHeader">
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    <img
+      src="{{ url_for('static', filename='images/nysc-logo.png') }}"
+      alt="NYSC Logo"
+      class="nysc-logo nav-logo"
+    >
+    <span>
+      <strong>Katsina Zonal Office</strong>
+      <small>File Movement Register</small>
+    </span>
+  </a>
+
+  <button
+    class="menu"
+    id="menuToggle"
+    type="button"
+    aria-label="Open navigation menu"
+    aria-controls="mainNavigation"
+    aria-expanded="false"
+  ><span aria-hidden="true">☰</span></button>
+
+  <nav id="mainNavigation" aria-label="Main navigation">
     <a href="{{ url_for('dashboard') }}">Dashboard</a>
-    {% if current_user and current_user['role'] != 'LGI Officer' %}<a href="{{ url_for('files_page') }}">File Register</a>{% endif %}
-    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','Supporting Staff') %}<a class="cta" href="{{ url_for('receive') }}">＋ {% if current_user['role']=='Supporting Staff' %}Register File{% else %}Receive File{% endif %}</a>{% endif %}
-    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','Supporting Staff') %}<a href="{{ url_for('inspections') }}">Inspections</a>{% endif %}
-    {% if current_user and current_user['role'] in ('Administrator','Zonal Inspector','LGI Officer') %}<a href="{{ url_for('reports') }}">Reports</a>{% endif %}
-    {% if current_user and current_user['role']=='Administrator' %}<a class="admin-link" href="{{ url_for('users') }}">Officials</a>{% endif %}
+    {% if current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('batch_management') }}">Batch Management</a>
+    {% endif %}
+    {% if current_user and current_user['role'] in ('Administrator', 'Zonal Inspector', 'LGI Officer') %}<a href="{{ url_for('monthly_clearance_home') }}">Monthly Clearance</a>{% endif %}
+    <a href="{{ url_for('files_page') }}">File Register</a>
+    <a class="cta" href="{{ url_for('receive') }}">＋ Receive File</a>
+    <a href="{{ url_for('inspections') }}">Inspection</a>
+    {% if current_user and current_user['role'] in ('Supporting Staff',) %}
+      <a href="{{ url_for('inspection_reports_home') }}">My Inspection Reports</a>
+    {% elif current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('inspection_review_inbox') }}">Inspection Review</a>
+      <a href="{{ url_for('inspection_results') }}">Inspection Results Report</a>
+    {% elif current_user and current_user['role'] == 'LGI Officer' %}
+      <a href="{{ url_for('inspection_reports_lgi') }}">LGA Inspection Reports</a>
+    {% endif %}
+
+    {% if current_user and current_user['role'] in ('LGI Officer', 'Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('health_ppa_dashboard') }}">Health PPA Compliance</a>
+      <a href="{{ url_for('directory') }}">Directory</a>
+    {% endif %}
+
+    {% if current_user and current_user['role'] in ('LGI Officer',) %}
+      <a href="{{ url_for('dashboard') }}#reposting-updates">Reposting Updates</a>
+    {% endif %}
+
+    {% if current_user and current_user['role'] in ('Administrator', 'Zonal Inspector') %}
+      <a href="{{ url_for('reposting_reports') }}">Reposting Review</a>
+    {% endif %}
+
+    {% if current_user and current_user['role']=='Administrator' %}
+      <a class="admin-link" href="{{ url_for('users') }}">Officials</a>
+    {% endif %}
+
     {% if current_user %}
     <div class="account">
-      <div class="account-text"><strong>{{ current_user['full_name'] }}</strong><small>{{ current_user['role'] }}{% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}</small></div>
+      <div class="account-text">
+        <strong>{{ current_user['full_name'] }}</strong>
+        <small>
+          {{ current_user['role'] }}
+          {% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}
+        </small>
+      </div>
       <a class="logout" href="{{ url_for('logout') }}">Logout</a>
     </div>
     {% endif %}
   </nav>
 </header>
+
 <main class="wrap">
-{% if current_user %}
-<div class="mobile-account"><strong>{{ current_user['full_name'] }}</strong><small>{{ current_user['role'] }}{% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}</small><a href="{{ url_for('logout') }}">Logout</a>{% if current_user['role']=='Administrator' %}<a href="{{ url_for('users') }}">Manage Officials</a>{% endif %}</div>
-{% endif %}
-{% with ms=get_flashed_messages(with_categories=true) %}{% for c,m in ms %}<div class="flash {{ c }}">✓ &nbsp;{{ m }}</div>{% endfor %}{% endwith %}
-{% block content %}{% endblock %}
+  {% if current_user %}
+  <div class="mobile-account">
+    <strong>{{ current_user['full_name'] }}</strong>
+    <small>
+      {{ current_user['role'] }}
+      {% if current_user['office'] %} · {{ current_user['office'] }}{% endif %}
+    </small>
+    <a href="{{ url_for('logout') }}">Logout</a>
+    {% if current_user['role']=='Administrator' %}
+      <a href="{{ url_for('users') }}">Manage Officials</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% with ms=get_flashed_messages(with_categories=true) %}
+    {% for c,m in ms %}
+      <div class="flash {{ c }}" role="status">✓ &nbsp;{{ m }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
 </main>
+
 <footer>NYSC Katsina Zonal Office · File Movement Register · Phase 2</footer>
-</body></html>
+
+<script>
+(function () {
+  const header = document.getElementById("siteHeader");
+  const toggle = document.getElementById("menuToggle");
+  const nav = document.getElementById("mainNavigation");
+
+  if (!header || !toggle || !nav) return;
+
+  function closeMenu() {
+    header.classList.remove("menu-open");
+    nav.classList.remove("is-open");
+    document.body.classList.remove("open");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation menu");
+  }
+
+  toggle.addEventListener("click", function (e) {
+    e.stopPropagation();
+    const isOpen = !nav.classList.contains("is-open");
+    nav.classList.toggle("is-open", isOpen);
+    header.classList.toggle("menu-open", isOpen);
+    document.body.classList.toggle("open", isOpen);
+    toggle.setAttribute("aria-expanded", String(isOpen));
+    toggle.setAttribute("aria-label", isOpen ? "Close navigation menu" : "Open navigation menu");
+  });
+
+  nav.querySelectorAll("a").forEach(function (link) {
+    link.addEventListener("click", closeMenu);
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!header.contains(event.target)) {
+      closeMenu();
+    }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeMenu();
+  });
+
+  window.addEventListener("resize", function () {
+    if (window.innerWidth > 760) closeMenu();
+  });
+})();
+</script>
+</body>
+</html>

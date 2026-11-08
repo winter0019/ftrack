@@ -1,0 +1,18 @@
+KATZIMS BATCH MANAGEMENT UPDATE
+
+Changed:
+- app.py
+- templates/base.html
+- templates/batch_management.html (new)
+
+ZI and Administrator can archive/restore batches.
+Archiving sets member status to Archived but does not delete member records or linked history.
+Each member's previous status is saved and restored.
+Actions are recorded with actor, role, batch, count and timestamp.
+Schema tables are created automatically at startup by init_db().
+
+Before production use:
+1. Back up the PostgreSQL database.
+2. Deploy and confirm Batch Management appears for ZI/Admin only.
+3. Check the stored batch value for 2025 Batch C in the batch register before archiving.
+4. Test with a non-production batch/database copy first.
