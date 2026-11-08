@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Batch Management | KATZIMS{% endblock %}
+{% block content %}
+<style>
+.batch-wrap{max-width:1250px;margin:32px auto;padding:0 20px 55px}
+.batch-wrap h1{margin:0 0 8px;color:#123d31}
+.batch-muted,.batch-note{color:#64756f}
+.batch-card{background:#fff;border:1px solid #dce7e1;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 5px 18px rgba(16,60,45,.05)}
+.batch-table{width:100%;border-collapse:collapse}
+.batch-table th,.batch-table td{padding:12px 10px;border-bottom:1px solid #e8efeb;text-align:left;vertical-align:middle}
+.batch-table th{font-size:12px;text-transform:uppercase;color:#61746c;letter-spacing:.04em}
+.batch-pill{display:inline-block;border-radius:30px;padding:5px 10px;font-size:12px;font-weight:700;background:#e8f4ed;color:#17633e}
+.batch-pill.archived{background:#fff0dc;color:#8b5100}
+.batch-btn{border:0;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;background:#0b5a40;color:#fff}
+.batch-btn.restore{background:#315d8a}
+.batch-btn.danger{background:#8a3b2d}
+.batch-note{font-size:13px;line-height:1.55}
+@media(max-width:760px){.batch-table{display:block;overflow-x:auto}}
+</style>
+<div class="batch-wrap">
+  <h1>Corps Member Batch Management</h1>
+  <p class="batch-muted">Archive completed service batches or restore them when required.</p>
+  <div class="batch-card">
+    <h3>Batch Register</h3>
+    <p class="batch-note">Archiving changes members' operational status to Archived. Their profiles and linked historical records are retained. Restoring returns each member to the status recorded before archiving.</p>
+    <table class="batch-table">
+      <thead><tr><th>Batch</th><th>Total Members</th><th>Active Members</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for b in batches %}
+        <tr>
+          <td><strong>{{ b.batch_label }}</strong></td><td>{{ b.total_members }}</td><td>{{ b.active_members }}</td>
+          <td>{% if b.archive_status == 'Archived' %}<span class="batch-pill archived">Archived</span>{% else %}<span class="batch-pill">Active</span>{% endif %}</td>
+          <td>
+          {% if b.archive_status == 'Archived' %}
+            <form method="post" action="{{ url_for('batch_management_restore') }}">
+              <input type="hidden" name="batch_value" value="{{ b.batch_value or '' }}">
+              <input type="hidden" name="confirmation" value="RESTORE">
+              <button class="batch-btn restore" type="submit" onclick="return confirm('Restore {{ b.batch_label }} and return members to their previous statuses?')">Restore Batch</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('batch_management_archive') }}">
+              <input type="hidden" name="batch_value" value="{{ b.batch_value or '' }}">
+              <input type="hidden" name="confirmation" value="ARCHIVE">
+              <button class="batch-btn danger" type="submit" onclick="return confirm('Archive {{ b.batch_label }}? Records will be preserved, but members will be removed from active operations.')">Archive Batch</button>
+            </form>
+          {% endif %}
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="5">No Corps Member batches were found.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="batch-card">
+    <h3>Recent Batch Actions</h3>
+    <table class="batch-table">
+      <thead><tr><th>Batch</th><th>Action</th><th>Members</th><th>Officer</th><th>Role</th><th>Date</th></tr></thead>
+      <tbody>
+      {% for a in audit %}<tr><td>{{ a.batch_label }}</td><td>{{ a.action }}</td><td>{{ a.member_count }}</td><td>{{ a.actor_name }}</td><td>{{ a.actor_role }}</td><td>{{ a.created_at }}</td></tr>
+      {% else %}<tr><td colspan="6">No batch management actions recorded yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
