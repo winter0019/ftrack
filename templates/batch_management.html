@@ -23,6 +23,7 @@
   <div class="batch-card">
     <h3>Batch Register</h3>
     <p class="batch-note">Archiving changes members' operational status to Archived. Their profiles and linked historical records are retained. Restoring returns each member to the status recorded before archiving.</p>
+    {% if unmatched %}<p class="batch-note">{{ unmatched }} Corps Member record(s) have State Codes without a recognizable year/batch and are excluded from archive actions until corrected.</p>{% endif %}
     <table class="batch-table">
       <thead><tr><th>Batch</th><th>Total Members</th><th>Active Members</th><th>Status</th><th>Action</th></tr></thead>
       <tbody>
