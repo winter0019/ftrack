@@ -51,7 +51,7 @@
         <h1>{{ campaign['title'] }}</h1>
         <p>{{ campaign['month_year'] }} · {{ campaign['status'] }} · Deadline: {{ campaign['deadline_at'] or 'Not published' }}</p>
     </div>
-    <a class="cta" href="{{ url_for('monthly_clearance_export', campaign_id=campaign['id']) }}">Export Excel</a>
+    <a class="cta" href="{{ url_for('monthly_clearance_export', campaign_id=campaign['id'], batch=selected_batch if selected_batch else None) }}">Export Excel</a>
 </div>
 
 <div class="stats">
