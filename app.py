@@ -2859,6 +2859,10 @@ def clearance_schema():
           after_data TEXT,
           created_at TEXT NOT NULL
         );
+        ALTER TABLE clearance_months ADD COLUMN IF NOT EXISTS archived_at TEXT;
+        ALTER TABLE clearance_months ADD COLUMN IF NOT EXISTS archived_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+        ALTER TABLE clearance_months ADD COLUMN IF NOT EXISTS archived_by_name TEXT;
+        CREATE INDEX IF NOT EXISTS idx_clearance_months_archived ON clearance_months(archived_at);
         CREATE INDEX IF NOT EXISTS idx_clearance_cases_campaign ON missed_clearance_records(campaign_id);
         CREATE INDEX IF NOT EXISTS idx_clearance_cases_lga ON missed_clearance_records(lga);
         CREATE INDEX IF NOT EXISTS idx_clearance_notifications_user ON clearance_notifications(user_id, viewed_at);
@@ -2899,8 +2903,17 @@ def monthly_clearance_home():
           FROM clearance_months cm
           LEFT JOIN missed_clearance_records m ON m.campaign_id=cm.id
           LEFT JOIN clearance_followups f ON f.case_id=m.id
+          WHERE cm.archived_at IS NULL
           GROUP BY cm.id ORDER BY cm.id DESC
         """).fetchall()
+        archived_campaigns = []
+        if u["role"] in ("Administrator", "Zonal Inspector"):
+            archived_campaigns = c.execute("""SELECT cm.*, COUNT(DISTINCT m.id) AS total_cases,
+              COUNT(DISTINCT CASE WHEN f.acknowledged_at IS NOT NULL THEN f.id END) AS acknowledged,
+              COUNT(DISTINCT CASE WHEN f.status='Resolved' THEN f.id END) AS resolved
+              FROM clearance_months cm LEFT JOIN missed_clearance_records m ON m.campaign_id=cm.id
+              LEFT JOIN clearance_followups f ON f.case_id=m.id
+              WHERE cm.archived_at IS NOT NULL GROUP BY cm.id ORDER BY cm.id DESC""").fetchall()
         if u["role"] == "LGI Officer":
             campaigns = [dict(x) for x in campaigns]
             for x in campaigns:
@@ -2910,7 +2923,7 @@ def monthly_clearance_home():
         notifications = c.execute("""SELECT * FROM clearance_notifications
           WHERE (user_id=%s OR (user_id IS NULL AND lga=%s))
           ORDER BY id DESC LIMIT 15""",(u["id"],u["lga"] or "")).fetchall()
-    return render_template("monthly_clearance.html", campaigns=campaigns, notifications=notifications)
+    return render_template("monthly_clearance.html", campaigns=campaigns, archived_campaigns=archived_campaigns, notifications=notifications)
 
 @app.route("/monthly-clearance/create", methods=["GET","POST"])
 @login_required
@@ -2990,6 +3003,65 @@ def monthly_clearance_create():
         flash(f"Draft created. Valid members: {len(valid)}; invalid/out-of-zone: {len(invalid)}; duplicate entries: {len(duplicate)}.","success")
         return redirect(url_for("monthly_clearance_review",campaign_id=campaign_id))
     return render_template("monthly_clearance_create.html", lgas=LGAS)
+
+@app.route("/monthly-clearance/<int:campaign_id>/edit", methods=["GET", "POST"])
+@login_required
+def monthly_clearance_edit(campaign_id):
+    u = current_user()
+    if not u or u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can edit campaigns.", "error")
+        return redirect(url_for("monthly_clearance_home"))
+    with db() as c:
+        campaign = c.execute("SELECT * FROM clearance_months WHERE id=%s AND archived_at IS NULL", (campaign_id,)).fetchone()
+        if not campaign:
+            flash("Campaign not found or already archived.", "error")
+            return redirect(url_for("monthly_clearance_home"))
+        if request.method == "POST":
+            month_year = (request.form.get("month_year") or "").strip()
+            title = (request.form.get("title") or "").strip()
+            notes = (request.form.get("notes") or "").strip()
+            deadline = (request.form.get("deadline_at") or "").strip() or None
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_year) or not title:
+                flash("Provide a valid campaign month and title.", "error")
+                return render_template("monthly_clearance_edit.html", campaign=campaign)
+            duplicate = c.execute("SELECT id FROM clearance_months WHERE month_year=%s AND id<>%s", (month_year, campaign_id)).fetchone()
+            if duplicate:
+                flash("Another campaign already exists for that month.", "error")
+                return render_template("monthly_clearance_edit.html", campaign=campaign)
+            if deadline and not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?", deadline):
+                flash("Deadline must use YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS.", "error")
+                return render_template("monthly_clearance_edit.html", campaign=campaign)
+            before = {k: campaign[k] for k in ("month_year", "title", "notes", "deadline_at")}
+            c.execute("UPDATE clearance_months SET month_year=%s,title=%s,notes=%s,deadline_at=%s WHERE id=%s",
+                      (month_year, title, notes, deadline, campaign_id))
+            clearance_audit(c, campaign_id, None, u, "Campaign details edited", before,
+                            {"month_year": month_year, "title": title, "notes": notes, "deadline_at": deadline})
+            c.commit()
+            flash("Campaign updated successfully.", "success")
+            return redirect(url_for("monthly_clearance_home"))
+    return render_template("monthly_clearance_edit.html", campaign=campaign)
+
+@app.route("/monthly-clearance/<int:campaign_id>/archive", methods=["POST"])
+@login_required
+def monthly_clearance_archive(campaign_id):
+    u = current_user()
+    if not u or u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only the Zonal Inspector or Administrator can archive campaigns.", "error")
+        return redirect(url_for("monthly_clearance_home"))
+    reason = (request.form.get("reason") or "").strip()
+    with db() as c:
+        campaign = c.execute("SELECT * FROM clearance_months WHERE id=%s AND archived_at IS NULL FOR UPDATE", (campaign_id,)).fetchone()
+        if not campaign:
+            flash("Campaign not found or already archived.", "error")
+            return redirect(url_for("monthly_clearance_home"))
+        stamp = now()
+        c.execute("UPDATE clearance_months SET archived_at=%s, archived_by=%s, archived_by_name=%s WHERE id=%s",
+                  (stamp, u["id"], u["full_name"], campaign_id))
+        clearance_audit(c, campaign_id, None, u, "Campaign archived", {"archived_at": None},
+                        {"archived_at": stamp, "reason": reason})
+        c.commit()
+    flash("Campaign archived. Its cases, LGI responses, notifications and audit history have been preserved.", "success")
+    return redirect(url_for("monthly_clearance_home"))
 
 @app.route("/monthly-clearance/<int:campaign_id>/review")
 @login_required
@@ -3233,7 +3305,7 @@ def monthly_clearance_reminders():
     sent=0
     current=datetime.now(ZoneInfo('Africa/Lagos'))
     with db() as c:
-        campaigns=c.execute("SELECT * FROM clearance_months WHERE status='Published'").fetchall()
+        campaigns=c.execute("SELECT * FROM clearance_months WHERE status='Published' AND archived_at IS NULL").fetchall()
         for camp in campaigns:
             deadline=datetime.strptime(camp["deadline_at"],"%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo('Africa/Lagos')) if camp["deadline_at"] else None
             if not deadline:continue
