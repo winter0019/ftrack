@@ -3144,7 +3144,7 @@ def monthly_clearance_detail(campaign_id):
         # Batch is derived from the authoritative NYSC State Code (e.g. KT/26B/1423).
         # Older campaign rows do not have a dedicated batch column, so no re-import is required.
         def _clearance_batch_from_state_code(state_code):
-            match = re.match(r"^[A-Z]{2}/(\\d{2})([ABC])/", (state_code or "").strip().upper())
+            match = re.match(r"^[A-Z]{2}/(\d{2})([ABC])/", (state_code or "").strip().upper())
             if not match:
                 return "Unspecified"
             return f"20{match.group(1)} Batch {match.group(2)}"
@@ -3293,7 +3293,7 @@ def monthly_clearance_export(campaign_id):
           WHERE m.campaign_id=%s AND {cond} ORDER BY m.lga,m.full_name""",(campaign_id,*params)).fetchall()
     selected_batch = (request.args.get("batch") or "").strip()
     def _export_batch_from_state_code(state_code):
-        match = re.match(r"^[A-Z]{2}/(\\d{2})([ABC])/", (state_code or "").strip().upper())
+        match = re.match(r"^[A-Z]{2}/(\d{2})([ABC])/", (state_code or "").strip().upper())
         return f"20{match.group(1)} Batch {match.group(2)}" if match else "Unspecified"
     rows = [dict(row) for row in rows]
     for row in rows:
