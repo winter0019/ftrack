@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Edit Campaign | KATZIMS{% endblock %}{% block content %}
+<div class="head"><div><h1>Edit Campaign</h1><p>Update campaign details without deleting its cases or LGI investigation history.</p></div></div>
+<section class="section"><form method="post" class="form-grid">
+<label>Campaign month<input type="month" name="month_year" required value="{{ campaign['month_year'] }}"></label>
+<label>Campaign title<input type="text" name="title" required maxlength="160" value="{{ campaign['title'] }}"></label>
+<label>Deadline <small>(leave blank if not applicable)</small><input type="text" name="deadline_at" placeholder="YYYY-MM-DD HH:MM:SS" value="{{ campaign['deadline_at'] or '' }}"></label>
+<label>Notes<textarea name="notes" rows="4">{{ campaign['notes'] or '' }}</textarea></label>
+<div><button class="cta" type="submit">Save Changes</button> <a href="{{ url_for('monthly_clearance_home') }}">Cancel</a></div>
+</form><p><b>Current status:</b> {{ campaign['status'] }}. Editing does not reset LGI acknowledgements, case updates or resolution history.</p></section>{% endblock %}
