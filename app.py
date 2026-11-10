@@ -3140,6 +3140,28 @@ def monthly_clearance_detail(campaign_id):
            f.follow_up_action,f.recommendation,f.resolution_note,f.updated_at AS followup_updated
            FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
            WHERE m.campaign_id=%s AND {cond} ORDER BY m.lga,m.full_name""",(campaign_id,*params)).fetchall()
+
+        # Batch is derived from the authoritative NYSC State Code (e.g. KT/26B/1423).
+        # Older campaign rows do not have a dedicated batch column, so no re-import is required.
+        def _clearance_batch_from_state_code(state_code):
+            match = re.match(r"^[A-Z]{2}/(\\d{2})([ABC])/", (state_code or "").strip().upper())
+            if not match:
+                return "Unspecified"
+            return f"20{match.group(1)} Batch {match.group(2)}"
+
+        cases = [dict(row) for row in cases]
+        for row in cases:
+            row["batch"] = _clearance_batch_from_state_code(row.get("state_code"))
+        available_batches = sorted(
+            {row["batch"] for row in cases if row["batch"] != "Unspecified"},
+            key=lambda value: (value[:4], value[-1])
+        )
+        selected_batch = (request.args.get("batch") or "").strip()
+        if selected_batch not in available_batches:
+            selected_batch = ""
+        if selected_batch:
+            cases = [row for row in cases if row["batch"] == selected_batch]
+
         total=len(cases)
         metrics={"total":total,"acknowledged":sum(bool(x["acknowledged_at"]) for x in cases),
           "contacted":sum(bool(x["contacted_at"]) for x in cases),
@@ -3154,7 +3176,7 @@ def monthly_clearance_detail(campaign_id):
         if u["role"] == "LGI Officer":
             lga_summary=[x for x in lga_summary if x["lga"]==u["lga"]]
         audit=c.execute("""SELECT * FROM clearance_audit_logs WHERE campaign_id=%s ORDER BY id DESC LIMIT 100""",(campaign_id,)).fetchall() if u["role"]!="LGI Officer" else []
-    return render_template("monthly_clearance_detail.html",campaign=campaign,cases=cases,metrics=metrics,lga_summary=lga_summary,audit=audit,is_lgi=u["role"]=="LGI Officer")
+    return render_template("monthly_clearance_detail.html",campaign=campaign,cases=cases,metrics=metrics,lga_summary=lga_summary,audit=audit,is_lgi=u["role"]=="LGI Officer",available_batches=available_batches,selected_batch=selected_batch)
 
 @app.route("/monthly-clearance/case/<int:case_id>",methods=["GET","POST"])
 @login_required
@@ -3269,13 +3291,22 @@ def monthly_clearance_export(campaign_id):
           f.contacted_at,f.explanation,f.follow_up_action,f.recommendation,f.resolution_note
           FROM missed_clearance_records m JOIN clearance_followups f ON f.case_id=m.id
           WHERE m.campaign_id=%s AND {cond} ORDER BY m.lga,m.full_name""",(campaign_id,*params)).fetchall()
+    selected_batch = (request.args.get("batch") or "").strip()
+    def _export_batch_from_state_code(state_code):
+        match = re.match(r"^[A-Z]{2}/(\\d{2})([ABC])/", (state_code or "").strip().upper())
+        return f"20{match.group(1)} Batch {match.group(2)}" if match else "Unspecified"
+    rows = [dict(row) for row in rows]
+    for row in rows:
+        row["batch"] = _export_batch_from_state_code(row.get("state_code"))
+    if selected_batch:
+        rows = [row for row in rows if row["batch"] == selected_batch]
     wb=Workbook(); ws=wb.active; ws.title="Clearance Cases"
     ws.append([f"MONTHLY CLEARANCE & ABSENTEEISM — {camp['title']}"])
-    ws.append(["State Code","Corps Member","LGA","PPA","Follow-up Status","Acknowledged","Contacted","Explanation","Follow-up Action","Recommendation","Resolution"])
+    ws.append(["State Code","Corps Member","Batch","LGA","PPA","Follow-up Status","Acknowledged","Contacted","Explanation","Follow-up Action","Recommendation","Resolution"])
     for cell in ws[2]:
         cell.font=Font(bold=True,color="FFFFFF"); cell.fill=PatternFill("solid",fgColor="145A43")
     for r in rows:
-        ws.append([r["state_code"],r["full_name"],r["lga"],r["ppa_name"],r["status"],r["acknowledged_at"],r["contacted_at"],r["explanation"],r["follow_up_action"],r["recommendation"],r["resolution_note"]])
+        ws.append([r["state_code"],r["full_name"],r["batch"],r["lga"],r["ppa_name"],r["status"],r["acknowledged_at"],r["contacted_at"],r["explanation"],r["follow_up_action"],r["recommendation"],r["resolution_note"]])
     for col in ws.columns:
         letter=col[0].column_letter
         ws.column_dimensions[letter].width=min(max(max(len(str(x.value or "")) for x in col)+2,14),42)
