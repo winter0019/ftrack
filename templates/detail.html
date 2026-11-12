@@ -92,7 +92,7 @@
             {% endfor %}
         </div>
         
-        {% if f.attachment %}
+        {% if f.attachment and not attachments %}
         <div class="attachment-box">
             <span>Electronic copy attached to this record</span>
             <a href="{{ url_for('download',name=f.attachment) }}">Download File</a>
