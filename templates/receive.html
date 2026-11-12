@@ -1,9 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ "Submit File to ZI" if lgi_scope|default(false) else "Receive File" }} | NYSC Katsina Zonal Office
-
-
-{% endblock %}
-
+{% block title %}{{ "Submit File to ZI" if lgi_scope|default(false) else "Receive File" }} | NYSC Katsina Zonal Office{% endblock %}
 {% block content %}
 <style>
 .form-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 0 40px; color: #17352d; }
@@ -130,10 +126,7 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
 @media(max-width:600px){.attachment-selection-head{align-items:flex-start;flex-direction:column}.attachment-selection-remove{padding:6px}}
 </style>
 <div id="lgi-attachment-selection" class="attachment-selection" hidden aria-live="polite">
-  <div class="attachment-selection-head">
-    <span>Selected attachments</span>
-    <span id="lgi-attachment-count" class="attachment-selection-count">0 of 3 selected</span>
-  </div>
+  <div class="attachment-selection-head"><span>Selected attachments</span><span id="lgi-attachment-count" class="attachment-selection-count">0 of 3 selected</span></div>
   <div id="lgi-attachment-items"></div>
   <div id="lgi-attachment-total" class="attachment-selection-total"></div>
   <div id="lgi-attachment-ready" class="attachment-selection-ready"></div>
@@ -141,123 +134,21 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
 </div>
 <script>
 (function(){
-  const input = document.getElementById('lgi-attachments');
-  const panel = document.getElementById('lgi-attachment-selection');
-  const itemsBox = document.getElementById('lgi-attachment-items');
-  const countBox = document.getElementById('lgi-attachment-count');
-  const totalBox = document.getElementById('lgi-attachment-total');
-  const readyBox = document.getElementById('lgi-attachment-ready');
-  const errorBox = document.getElementById('lgi-attachment-error');
-  if (!input || !panel) return;
-
-  const maxFiles = 3;
-  const maxBytes = 12 * 1024 * 1024;
-  let selected = [];
-
-  function formatSize(bytes){
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
-    return (bytes/1024/1024).toFixed(2) + ' MB';
-  }
-  function iconFor(file){
-    const type = (file.type || '').toLowerCase();
-    const name = file.name.toLowerCase();
-    if (type === 'application/pdf' || name.endsWith('.pdf')) return '📕';
-    if (type.startsWith('image/')) return '🖼️';
-    if (name.endsWith('.doc') || name.endsWith('.docx')) return '📝';
-    if (name.endsWith('.xls') || name.endsWith('.xlsx') || name.endsWith('.csv')) return '📊';
-    return '📄';
-  }
-  function syncInput(){
-    const transfer = new DataTransfer();
-    selected.forEach(file => transfer.items.add(file));
-    input.files = transfer.files;
-  }
-  function showError(message){
-    errorBox.textContent = message;
-    errorBox.hidden = !message;
-  }
-  function render(){
-    panel.hidden = selected.length === 0 && !errorBox.textContent;
-    countBox.textContent = selected.length + ' of ' + maxFiles + ' selected';
-    itemsBox.innerHTML = '';
-    let total = 0;
-    selected.forEach((file,index) => {
-      total += file.size;
-      const row = document.createElement('div');
-      row.className = 'attachment-selection-item';
-      const ico = document.createElement('span');
-      ico.className = 'attachment-selection-icon';
-      ico.textContent = iconFor(file);
-      const info = document.createElement('div');
-      info.className = 'attachment-selection-info';
-      const name = document.createElement('div');
-      name.className = 'attachment-selection-name';
-      name.textContent = file.name;
-      const meta = document.createElement('div');
-      meta.className = 'attachment-selection-meta';
-      meta.textContent = formatSize(file.size) + ' · ' + (file.type || 'File');
-      info.appendChild(name);
-      info.appendChild(meta);
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'attachment-selection-remove';
-      remove.textContent = 'Remove';
-      remove.setAttribute('aria-label','Remove ' + file.name);
-      remove.addEventListener('click',function(){
-        selected.splice(index,1);
-        syncInput();
-        showError('');
-        render();
-      });
-      row.appendChild(ico);
-      row.appendChild(info);
-      row.appendChild(remove);
-      itemsBox.appendChild(row);
-    });
-    totalBox.textContent = '';
-    const totalLabel = document.createElement('span');
-    totalLabel.textContent = 'Total selected';
-    const totalValue = document.createElement('strong');
-    totalValue.textContent = selected.length + ' file(s) · ' + formatSize(total);
-    totalBox.appendChild(totalLabel);
-    totalBox.appendChild(totalValue);
-    readyBox.textContent = selected.length ? '✓ Files selected. Ready to submit.' : '';
-  }
-  input.addEventListener('change',function(){
-    const incoming = Array.from(input.files || []);
-    if (incoming.length > maxFiles) {
-      selected = [];
-      syncInput();
-      showError('You can select a maximum of three attachments. Please choose up to three files.');
-      render();
-      return;
-    }
-    const oversized = incoming.find(file => file.size > maxBytes);
-    if (oversized) {
-      selected = [];
-      syncInput();
-      showError(oversized.name + ' exceeds the 12 MB per-file limit. Please choose a smaller file.');
-      render();
-      return;
-    }
-    selected = incoming;
-    showError('');
-    render();
-  });
-  const form = input.closest('form');
-  if (form) {
-    form.addEventListener('submit',function(event){
-      const oversized = selected.find(file => file.size > maxBytes);
-      if (selected.length > maxFiles || oversized) {
-        event.preventDefault();
-        showError(oversized ? oversized.name + ' exceeds the 12 MB limit.' : 'Select no more than three attachments.');
-        render();
-      }
-    });
-  }
+ const input=document.getElementById('lgi-attachments'), panel=document.getElementById('lgi-attachment-selection');
+ if(!input||!panel)return;
+ const items=document.getElementById('lgi-attachment-items'), count=document.getElementById('lgi-attachment-count'), totalBox=document.getElementById('lgi-attachment-total'), ready=document.getElementById('lgi-attachment-ready'), error=document.getElementById('lgi-attachment-error');
+ const maxFiles=3,maxBytes=12*1024*1024; let selected=[];
+ function size(n){return n<1024? n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB';}
+ function icon(f){let n=f.name.toLowerCase(),t=(f.type||'').toLowerCase(); if(n.endsWith('.pdf')||t==='application/pdf')return '📕'; if(t.startsWith('image/'))return '🖼️'; if(/\\.docx?$/.test(n))return '📝'; if(/\\.(xlsx?|csv)$/.test(n))return '📊'; return '📄';}
+ function sync(){const dt=new DataTransfer();selected.forEach(f=>dt.items.add(f));input.files=dt.files;}
+ function render(){panel.hidden=!selected.length&&!error.textContent;count.textContent=selected.length+' of 3 selected';items.innerHTML='';let total=0;
+ selected.forEach((f,i)=>{total+=f.size;const row=document.createElement('div');row.className='attachment-selection-item';const ico=document.createElement('span');ico.className='attachment-selection-icon';ico.textContent=icon(f);const info=document.createElement('div');info.className='attachment-selection-info';const nm=document.createElement('div');nm.className='attachment-selection-name';nm.textContent=f.name;const meta=document.createElement('div');meta.className='attachment-selection-meta';meta.textContent=size(f.size)+' · '+(f.type||'File');info.append(nm,meta);const btn=document.createElement('button');btn.type='button';btn.className='attachment-selection-remove';btn.textContent='Remove';btn.addEventListener('click',()=>{selected.splice(i,1);sync();error.textContent='';error.hidden=true;render();});row.append(ico,info,btn);items.appendChild(row);});
+ totalBox.textContent='';const a=document.createElement('span');a.textContent='Total selected';const b=document.createElement('strong');b.textContent=selected.length+' file(s) · '+size(total);totalBox.append(a,b);ready.textContent=selected.length?'✓ Files selected. Ready to submit.':'';}
+ input.addEventListener('change',()=>{const files=Array.from(input.files||[]);const big=files.find(f=>f.size>maxBytes);if(files.length>maxFiles||big){selected=[];sync();error.textContent=big?big.name+' exceeds the 12 MB per-file limit.':'You can select a maximum of three attachments.';error.hidden=false;render();return;}selected=files;error.textContent='';error.hidden=true;render();});
+ const form=input.closest('form');if(form)form.addEventListener('submit',e=>{const big=selected.find(f=>f.size>maxBytes);if(selected.length>maxFiles||big){e.preventDefault();error.textContent=big?big.name+' exceeds the 12 MB per-file limit.':'Select no more than three attachments.';error.hidden=false;render();}});
 })();
 </script>
+
             </div>
         </div>
 
