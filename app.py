@@ -20,6 +20,9 @@ UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
 ALLOWED_INSPECTION_EVIDENCE = {"pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "csv"}
 MAX_INSPECTION_EVIDENCE_BYTES = 12 * 1024 * 1024
+MAX_FILE_ATTACHMENTS = 3
+MAX_FILE_ATTACHMENT_BYTES = 12 * 1024 * 1024
+ALLOWED_FILE_ATTACHMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "csv", "txt"}
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FILETRACK_SECRET", "change-this-secret-key")
@@ -113,6 +116,55 @@ def save_file_attachment(uploaded, file_id):
     uploaded.save(os.path.join(UPLOADS, stored_name))
     return stored_name
 
+
+def save_multiple_file_attachments(uploaded_files, file_id, uploaded_by):
+    """Validate and save up to three attachments; return metadata for DB insertion."""
+    selected = [item for item in (uploaded_files or []) if item and item.filename]
+    if len(selected) > MAX_FILE_ATTACHMENTS:
+        raise ValueError("You can upload a maximum of three attachments per submission.")
+    saved = []
+    os.makedirs(UPLOADS, exist_ok=True)
+    for index, uploaded in enumerate(selected, start=1):
+        original_name = secure_filename(os.path.basename(uploaded.filename)) or f"attachment_{index}"
+        ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+        if ext not in ALLOWED_FILE_ATTACHMENT_EXTENSIONS:
+            raise ValueError(f"File type not allowed for {uploaded.filename}. Allowed: PDF, Word, Excel, CSV, TXT and images.")
+        stored_name = secure_filename(
+            f"{(file_id or 'file').replace('/', '_')}_{index:02d}_{uuid.uuid4().hex[:10]}_{original_name}"
+        )
+        target = os.path.join(UPLOADS, stored_name)
+        uploaded.save(target)
+        size = os.path.getsize(target)
+        if size > MAX_FILE_ATTACHMENT_BYTES:
+            try:
+                os.remove(target)
+            except OSError:
+                pass
+            for item in saved:
+                try:
+                    os.remove(item["stored_name_path"])
+                except OSError:
+                    pass
+            raise ValueError(f"{uploaded.filename} exceeds the 12 MB per-file limit.")
+        saved.append({
+            "original_name": original_name,
+            "stored_name": stored_name,
+            "mime_type": uploaded.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream",
+            "size_bytes": size,
+            "uploaded_by": uploaded_by,
+            "stored_name_path": target,
+        })
+    return saved
+
+def insert_file_attachment_rows(c, file_id, attachments, uploaded_at):
+    for item in attachments:
+        c.execute("""
+            INSERT INTO file_attachments
+            (file_id,original_name,stored_name,mime_type,size_bytes,uploaded_by,uploaded_at)
+            VALUES(%s,%s,%s,%s,%s,%s,%s)
+        """, (file_id, item["original_name"], item["stored_name"], item["mime_type"],
+              item["size_bytes"], item["uploaded_by"], uploaded_at))
+
 def init_db():
     """Create/upgrade the PostgreSQL schema used by KATZIMS."""
     with db() as c:
@@ -133,6 +185,18 @@ def init_db():
           current_location TEXT DEFAULT 'Katsina Zonal Office',
           created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS file_attachments(
+          id BIGSERIAL PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          stored_name TEXT NOT NULL UNIQUE,
+          mime_type TEXT,
+          size_bytes BIGINT NOT NULL DEFAULT 0,
+          uploaded_by TEXT,
+          uploaded_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_file_attachments_file_id ON file_attachments(file_id);
 
         CREATE TABLE IF NOT EXISTS movements(
           id BIGSERIAL PRIMARY KEY,
@@ -921,7 +985,7 @@ def lgi_send_file():
         if state_code and not valid_state_code(state_code):
             flash("Invalid State Code. Use the NYSC format, e.g. KT/26A/1741.", "error")
             return redirect(url_for("lgi_send_file"))
-        t = now(); attachment = None
+        t = now(); attachment = None; attachments = []
         with db() as c:
             try:
                 if state_code:
@@ -931,9 +995,11 @@ def lgi_send_file():
                         flash(f"FILE ALREADY IN MOVEMENT — {state_code} is already linked to {f['file_id']} at {f['current_location']}. The file must be Put Away before a new registration is allowed.", "error")
                         c.rollback()
                         return redirect(url_for("lgi_send_file"))
-                fid = next_file_id(c, state_code); uploaded = request.files.get("attachment")
-                if uploaded and uploaded.filename:
-                    attachment = save_file_attachment(uploaded, fid)
+                fid = next_file_id(c, state_code)
+                attachments = save_multiple_file_attachments(
+                    request.files.getlist("attachments"), fid, u["full_name"]
+                )
+                attachment = attachments[0]["stored_name"] if attachments else None
                 c.execute("""INSERT INTO files
                     (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                      description,attachment,status,current_location,created_at)
@@ -942,6 +1008,7 @@ def lgi_send_file():
                      u["full_name"], u["full_name"], t, request.form.get("priority", "Normal"),
                      request.form.get("remarks") or request.form.get("description"), attachment,
                      "Submitted", "Katsina Zonal Office", t))
+                insert_file_attachment_rows(c, fid, attachments, t)
                 c.execute("""INSERT INTO movements
                     (file_id,from_location,to_location,forwarded_by,receiving_officer,action,
                      forwarded_at,status,remarks,submitted_by,submitted_at)
@@ -955,8 +1022,13 @@ def lgi_send_file():
                 c.commit()
             except Exception:
                 c.rollback()
+                for item in attachments:
+                    try:
+                        os.remove(item["stored_name_path"])
+                    except (OSError, KeyError):
+                        pass
                 raise
-        flash(f"{fid} submitted to the Zonal Office successfully.", "success")
+        flash(f"{fid} submitted to the Zonal Office successfully with {len(attachments)} attachment(s).", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("receive.html", lgas=[assigned_lga], priorities=PRIORITIES, lgi_scope=True, assigned_lga=assigned_lga)
@@ -1464,7 +1536,8 @@ def detail(file_id):
             return "File not found", 404
         movements = c.execute("SELECT * FROM movements WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
         audit = c.execute("SELECT * FROM audit_logs WHERE file_id=%s ORDER BY id DESC", (file_id,)).fetchall()
-    return render_template("detail.html", f=f, movements=movements, audit=audit, branches=BRANCHES)
+        attachments = c.execute("SELECT * FROM file_attachments WHERE file_id=%s ORDER BY id", (file_id,)).fetchall()
+    return render_template("detail.html", f=f, movements=movements, audit=audit, branches=BRANCHES, attachments=attachments)
 
 @app.route("/forward/<path:file_id>", methods=["POST"])
 @movement_required
@@ -2744,6 +2817,37 @@ def view_reposting_notification(notification_id):
         c.execute("UPDATE reposting_notifications SET viewed=1,viewed_at=%s WHERE id=%s AND lga=%s", (now(), notification_id, u["lga"]))
         c.commit()
     return redirect(url_for("dashboard"))
+
+@app.route("/file-attachment/<int:attachment_id>/preview")
+@login_required
+def preview_file_attachment(attachment_id):
+    u = current_user()
+    if not u or u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only the Zonal Inspector and Administrator can preview submitted attachments.", "error")
+        return redirect(url_for("dashboard"))
+    with db() as c:
+        item = c.execute("SELECT * FROM file_attachments WHERE id=%s", (attachment_id,)).fetchone()
+    if not item:
+        return "Attachment not found", 404
+    response = send_from_directory(UPLOADS, item["stored_name"], as_attachment=False,
+                                   mimetype=item["mime_type"] or "application/octet-stream")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"
+    return response
+
+@app.route("/file-attachment/<int:attachment_id>/download")
+@login_required
+def download_file_attachment(attachment_id):
+    u = current_user()
+    if not u or u["role"] not in ("Administrator", "Zonal Inspector"):
+        flash("Only the Zonal Inspector and Administrator can download submitted attachments.", "error")
+        return redirect(url_for("dashboard"))
+    with db() as c:
+        item = c.execute("SELECT * FROM file_attachments WHERE id=%s", (attachment_id,)).fetchone()
+    if not item:
+        return "Attachment not found", 404
+    return send_from_directory(UPLOADS, item["stored_name"], as_attachment=True,
+                               download_name=item["original_name"])
 
 @app.route("/download/<name>")
 @login_required
