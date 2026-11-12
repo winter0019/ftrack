@@ -101,6 +101,18 @@ def now():
     """Return local Lagos ISO timestamp string."""
     return datetime.now(ZoneInfo("Africa/Lagos")).strftime("%Y-%m-%d %H:%M:%S")
 
+
+def save_file_attachment(uploaded, file_id):
+    """Save an uploaded file using a safe flat filename, never File ID path separators."""
+    if not uploaded or not uploaded.filename:
+        return None
+    os.makedirs(UPLOADS, exist_ok=True)
+    original_name = secure_filename(os.path.basename(uploaded.filename)) or "attachment"
+    safe_file_id = secure_filename((file_id or "file").replace("/", "_")) or "file"
+    stored_name = secure_filename(f"{safe_file_id}_{original_name}") or f"attachment_{uuid.uuid4().hex}"
+    uploaded.save(os.path.join(UPLOADS, stored_name))
+    return stored_name
+
 def init_db():
     """Create/upgrade the PostgreSQL schema used by KATZIMS."""
     with db() as c:
@@ -921,8 +933,7 @@ def lgi_send_file():
                         return redirect(url_for("lgi_send_file"))
                 fid = next_file_id(c, state_code); uploaded = request.files.get("attachment")
                 if uploaded and uploaded.filename:
-                    attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
-                    uploaded.save(os.path.join(UPLOADS, attachment))
+                    attachment = save_file_attachment(uploaded, fid)
                 c.execute("""INSERT INTO files
                     (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                      description,attachment,status,current_location,created_at)
@@ -1372,8 +1383,7 @@ def receive():
                 fid = next_file_id(c, state_code); attachment = None
                 uploaded = request.files.get("attachment")
                 if uploaded and uploaded.filename:
-                    attachment = f"{fid}_{os.path.basename(uploaded.filename)}"
-                    uploaded.save(os.path.join(UPLOADS, attachment))
+                    attachment = save_file_attachment(uploaded, fid)
                 c.execute("""INSERT INTO files
                 (file_id,title,reference_no,state_code,registered_office,lga,lgi_name,received_by,received_at,priority,
                  description,attachment,status,current_location,created_at)
