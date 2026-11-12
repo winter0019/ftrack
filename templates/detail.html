@@ -98,6 +98,28 @@
             <a href="{{ url_for('download',name=f.attachment) }}">Download File</a>
         </div>
         {% endif %}
+        {% if attachments %}
+        <div class="card-panel" style="margin-top:16px;">
+            <h2>Submitted Attachments ({{ attachments|length }})</h2>
+            <p>Electronic documents submitted by the LGI. Preview images and PDFs here, or download any attachment.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:14px;">
+            {% for item in attachments %}
+              <div style="border:1px solid #dce8e1;border-radius:12px;padding:14px;background:#fbfdfc;min-width:0;">
+                <div style="font-weight:800;color:#174b39;overflow-wrap:anywhere;">{{ item.original_name }}</div>
+                <div style="font-size:12px;color:#718078;margin:5px 0 12px;">
+                  {{ (item.size_bytes / 1024 / 1024)|round(2) }} MB · {{ item.mime_type or 'File' }}
+                </div>
+                {% if item.mime_type and (item.mime_type.startswith('image/') or item.mime_type == 'application/pdf') %}
+                  <a target="_blank" rel="noopener" href="{{ url_for('preview_file_attachment',attachment_id=item.id) }}"
+                     style="display:inline-block;padding:8px 12px;background:#e8f5ed;color:#07543f;border-radius:7px;text-decoration:none;font-weight:800;font-size:12px;">Preview</a>
+                {% endif %}
+                <a href="{{ url_for('download_file_attachment',attachment_id=item.id) }}"
+                   style="display:inline-block;padding:8px 12px;background:#07543f;color:white;border-radius:7px;text-decoration:none;font-weight:800;font-size:12px;margin-left:5px;">Download</a>
+              </div>
+            {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     {% if f.status == 'Forwarded' %}

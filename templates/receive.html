@@ -1,5 +1,32 @@
 {% extends "base.html" %}
-{% block title %}{{ "Submit File to ZI" if lgi_scope|default(false) else "Receive File" }} | NYSC Katsina Zonal Office{% endblock %}
+{% block title %}{{ "Submit File to ZI" if lgi_scope|default(false) else "Receive File" }} | NYSC Katsina Zonal Office
+<script>
+(function(){
+  const input = document.getElementById('lgi-attachments');
+  const preview = document.getElementById('lgi-attachment-preview');
+  if (!input || !preview) return;
+  input.addEventListener('change', function(){
+    preview.innerHTML = '';
+    const files = Array.from(input.files || []);
+    if (files.length > 3) {
+      alert('Please select no more than three attachments.');
+      input.value = '';
+      return;
+    }
+    files.forEach(function(file){
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;gap:12px;padding:9px 12px;margin-top:7px;background:#f0f8f3;border:1px solid #d5eade;border-radius:8px;font-size:13px;';
+      const name = document.createElement('span');
+      name.textContent = file.name + ' (' + (file.size/1024/1024).toFixed(2) + ' MB)';
+      const type = document.createElement('strong');
+      type.textContent = file.type || 'File';
+      row.appendChild(name); row.appendChild(type); preview.appendChild(row);
+    });
+  });
+})();
+</script>
+
+{% endblock %}
 
 {% block content %}
 <style>
@@ -103,10 +130,13 @@ input:focus, select:focus, textarea:focus { border-color: #0b9b68; box-shadow: 0
             </div>
 
             <div class="form-group full">
-                <label>Attach Electronic Copy <span style="font-weight:normal; color:#667973;">(Optional · PDF, Excel, Word or image)</span></label>
+                <label>Attach Electronic Copies <span style="font-weight:normal; color:#667973;">(Optional · up to 3 files, maximum 12 MB each)</span></label>
                 <div class="file-upload-wrap">
-                    <input type="file" name="attachment">
+                    <input id="lgi-attachments" type="file" name="attachments" multiple
+                           accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt">
                 </div>
+                <div id="lgi-attachment-preview" class="attachment-preview-list" aria-live="polite"></div>
+                <small style="display:block;margin-top:8px;color:#667973;">Allowed: PDF, Word, Excel, CSV, TXT and images. You can select up to three files.</small>
             </div>
         </div>
 
