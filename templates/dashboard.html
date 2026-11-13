@@ -820,6 +820,21 @@
     }
 }
 
+
+/* Live Corps Member strength */
+.strength-panel{margin:0 0 30px;padding:24px;border:1px solid #dce8e3;border-radius:18px;background:#f8fcfa}
+.strength-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0}
+.strength-card{padding:18px;border-radius:14px;background:#fff;border:1px solid #e2ebe7}
+.strength-card small{display:block;color:#61736b;font-weight:700}
+.strength-card strong{display:block;font-size:34px;margin-top:8px;color:#123f31}
+.strength-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
+.strength-table-wrap{overflow-x:auto;background:#fff;border:1px solid #e2ebe7;border-radius:12px}
+.strength-table{width:100%;border-collapse:collapse;min-width:360px}
+.strength-table th,.strength-table td{padding:11px 13px;text-align:left;border-bottom:1px solid #edf1ef;font-size:14px}
+.strength-table th{font-size:12px;text-transform:uppercase;color:#64756d}
+.strength-updated{font-size:12px;color:#64756d;margin-top:12px}
+@media(max-width:760px){.strength-cards{grid-template-columns:1fr}.strength-tables{grid-template-columns:1fr}.strength-panel{padding:16px}}
+
 </style>
 
 
@@ -834,6 +849,58 @@
   </div>
 </div>
 {% endif %}
+
+
+<section class="strength-panel" id="corps-strength-panel" aria-live="polite">
+  <span class="eyebrow">Live Corps Members Strength</span>
+  <h2 id="strength-scope" style="margin:5px 0 0;">Loading assigned strength…</h2>
+  <p class="section-description" style="margin:6px 0 0;">Active serving Corps Members only. Passed-out and archived records are excluded.</p>
+  <div class="strength-cards">
+    <div class="strength-card"><small>Total Active Corps Members</small><strong id="strength-total">—</strong></div>
+    <div class="strength-card"><small>Male</small><strong id="strength-male">—</strong></div>
+    <div class="strength-card"><small>Female</small><strong id="strength-female">—</strong></div>
+  </div>
+  <div class="strength-tables">
+    <div id="strength-lga-section">
+      <h3 style="margin:0 0 10px;font-size:17px;">LGA Breakdown</h3>
+      <div class="strength-table-wrap"><table class="strength-table"><thead><tr><th>LGA</th><th>Total</th><th>Male</th><th>Female</th></tr></thead><tbody id="strength-lga-rows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+    </div>
+    <div>
+      <h3 style="margin:0 0 10px;font-size:17px;">Batch Breakdown</h3>
+      <div class="strength-table-wrap"><table class="strength-table"><thead><tr><th>Batch</th><th>Total</th><th>Male</th><th>Female</th></tr></thead><tbody id="strength-batch-rows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+    </div>
+  </div>
+  <div class="strength-updated" id="strength-updated">Refreshing automatically every 30 seconds.</div>
+</section>
+<script>
+(function(){
+  const endpoint = {{ url_for('corps_strength_api')|tojson }};
+  const isLgi = {{ (current_user['role'] == 'LGI Officer')|tojson }};
+  const fmt = n => Number(n || 0).toLocaleString();
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  function rows(items, labelKey){
+    if(!items || !items.length) return '<tr><td colspan="4">No active records found.</td></tr>';
+    return items.map(x => `<tr><td>${esc(x[labelKey])}</td><td>${fmt(x.total)}</td><td>${fmt(x.male)}</td><td>${fmt(x.female)}</td></tr>`).join('');
+  }
+  async function refresh(){
+    const stamp=document.getElementById('strength-updated');
+    try{
+      const response=await fetch(endpoint,{credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}});
+      if(!response.ok) throw new Error('Unable to retrieve live strength ('+response.status+').');
+      const data=await response.json();
+      document.getElementById('strength-scope').textContent=data.scope+' Corps Members';
+      document.getElementById('strength-total').textContent=fmt(data.total);
+      document.getElementById('strength-male').textContent=fmt(data.male);
+      document.getElementById('strength-female').textContent=fmt(data.female);
+      document.getElementById('strength-lga-rows').innerHTML=rows(data.lgas,'lga');
+      document.getElementById('strength-batch-rows').innerHTML=rows(data.batches,'batch_label');
+      document.getElementById('strength-lga-section').style.display=isLgi?'none':'';
+      stamp.textContent='Last updated: '+data.updated_at+' · Auto-refreshes every 30 seconds';
+    }catch(err){ stamp.textContent=err.message+' The dashboard will retry automatically.'; }
+  }
+  refresh(); window.setInterval(refresh,30000);
+})();
+</script>
 
 {% if current_user['role'] == 'LGI Officer' %}
 
