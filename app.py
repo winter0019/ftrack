@@ -16,8 +16,35 @@ import uuid
 import json
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-UPLOADS = os.path.join(BASE, "uploads")
+# Render Persistent Disk: set UPLOADS_DIR=/var/data/uploads in the Render environment.
+# Local development continues to use the project's ./uploads directory by default.
+UPLOADS = os.path.abspath(os.environ.get("UPLOADS_DIR") or os.path.join(BASE, "uploads"))
 os.makedirs(UPLOADS, exist_ok=True)
+
+def stored_upload_path(stored_name):
+    """Resolve a stored upload filename safely inside the configured uploads directory."""
+    safe_name = os.path.basename(str(stored_name or ""))
+    if not safe_name or safe_name != str(stored_name or "") or safe_name in (".", ".."):
+        return None
+    return os.path.join(UPLOADS, safe_name)
+
+def send_stored_upload(stored_name, *, as_attachment=False, download_name=None, mimetype=None):
+    """Serve an upload only if its physical file exists on the configured persistent storage."""
+    path = stored_upload_path(stored_name)
+    if not path or not os.path.isfile(path):
+        app.logger.error("Uploaded file is missing from UPLOADS_DIR=%s: stored_name=%r", UPLOADS, stored_name)
+        return (
+            "The attachment record exists, but its uploaded file is not present in storage. "
+            "If this file was uploaded before persistent storage was configured, please upload it again.",
+            404,
+        )
+    return send_from_directory(
+        UPLOADS,
+        os.path.basename(path),
+        as_attachment=as_attachment,
+        download_name=download_name,
+        mimetype=mimetype,
+    )
 ALLOWED_INSPECTION_EVIDENCE = {"pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "csv"}
 MAX_INSPECTION_EVIDENCE_BYTES = 12 * 1024 * 1024
 MAX_FILE_ATTACHMENTS = 3
@@ -2829,8 +2856,14 @@ def preview_file_attachment(attachment_id):
         item = c.execute("SELECT * FROM file_attachments WHERE id=%s", (attachment_id,)).fetchone()
     if not item:
         return "Attachment not found", 404
-    response = send_from_directory(UPLOADS, item["stored_name"], as_attachment=False,
-                                   mimetype=item["mime_type"] or "application/octet-stream")
+    response = send_stored_upload(
+        item["stored_name"],
+        as_attachment=False,
+        download_name=item["original_name"],
+        mimetype=item["mime_type"] or "application/octet-stream",
+    )
+    if not hasattr(response, "headers"):
+        return response
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"
     return response
@@ -2846,14 +2879,18 @@ def download_file_attachment(attachment_id):
         item = c.execute("SELECT * FROM file_attachments WHERE id=%s", (attachment_id,)).fetchone()
     if not item:
         return "Attachment not found", 404
-    return send_from_directory(UPLOADS, item["stored_name"], as_attachment=True,
-                               download_name=item["original_name"])
+    return send_stored_upload(
+        item["stored_name"],
+        as_attachment=True,
+        download_name=item["original_name"],
+        mimetype=item["mime_type"] or "application/octet-stream",
+    )
 
 @app.route("/download/<name>")
 @login_required
 @lgi_report_only
 def download(name):
-    return send_from_directory(UPLOADS, name, as_attachment=True)
+    return send_stored_upload(name, as_attachment=True, download_name=name)
 
 @app.route("/admin/db-inspection")
 @admin_required
