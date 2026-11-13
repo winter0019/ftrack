@@ -1003,7 +1003,13 @@ def corps_strength_api():
         return {"error": "Your account does not have a valid LGA assignment."}, 403
 
     with db() as c:
-        where = "WHERE cm.status='Active' AND p.lga = ANY(%s)"
+        where = """WHERE cm.status='Active'
+          AND p.lga = ANY(%s)
+          AND NOT EXISTS (
+              SELECT 1 FROM corps_member_batch_archives archived_batch
+              WHERE archived_batch.batch_value = UPPER(SPLIT_PART(TRIM(cm.state_code), '/', 2))
+                AND archived_batch.status = 'Archived'
+          )"""
         params = [[assigned_lga] if is_lgi else LGAS]
         totals = c.execute(f"""
             SELECT COUNT(*) AS total,
