@@ -989,6 +989,64 @@ def dashboard():
             my_inspections = c.execute("SELECT COUNT(*) FROM inspection_assignments WHERE supporting_staff_id=%s AND status='Active'", (u["id"],)).fetchone()["count"]
     return render_template("dashboard.html", stats=stats, branches=branches, branch_counts=branch_counts, recent=recent, inspection_count=inspection_count, pending_inspections=pending_inspections, report_count=report_count, my_inspections=my_inspections, search_state_code=search_state_code, search_results=search_results)
 
+@app.route("/api/corps-strength")
+@login_required
+def corps_strength_api():
+    """Live active Corps Member strength, restricted to the signed-in user's scope."""
+    u = current_user()
+    if u["role"] not in ("Administrator", "Zonal Inspector", "LGI Officer"):
+        return {"error": "Not authorised"}, 403
+
+    is_lgi = u["role"] == "LGI Officer"
+    assigned_lga = (u.get("lga") or "").strip() if is_lgi else None
+    if is_lgi and assigned_lga not in LGAS:
+        return {"error": "Your account does not have a valid LGA assignment."}, 403
+
+    with db() as c:
+        where = "WHERE cm.status='Active' AND p.lga = ANY(%s)"
+        params = [[assigned_lga] if is_lgi else LGAS]
+        totals = c.execute(f"""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('male','m')) AS male,
+                   COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('female','f')) AS female
+            FROM corps_members cm
+            JOIN ppa_establishments p ON p.id=cm.ppa_id
+            {where}
+        """, params).fetchone()
+        lga_rows = c.execute(f"""
+            SELECT p.lga, COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('male','m')) AS male,
+                   COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('female','f')) AS female
+            FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
+            {where} GROUP BY p.lga ORDER BY p.lga
+        """, params).fetchall()
+        batch_rows = c.execute(f"""
+            SELECT CASE
+                WHEN UPPER(COALESCE(cm.state_code,'')) ~ '^KT/[0-9]{{2}}[ABC]/'
+                  THEN '20' || SUBSTRING(UPPER(cm.state_code) FROM '^KT/([0-9]{{2}})[ABC]/')
+                       || ' Batch ' || SUBSTRING(UPPER(cm.state_code) FROM '^KT/[0-9]{{2}}([ABC])/')
+                ELSE COALESCE(NULLIF(TRIM(cm.batch), ''), 'Unspecified')
+              END AS batch_label,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('male','m')) AS male,
+                COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(cm.gender,''))) IN ('female','f')) AS female
+            FROM corps_members cm JOIN ppa_establishments p ON p.id=cm.ppa_id
+            {where} GROUP BY 1 ORDER BY 1
+        """, params).fetchall()
+
+    def row_dict(row):
+        return {k: (int(row[k]) if k in ("total", "male", "female") else row[k]) for k in row.keys()}
+    payload = {
+        "scope": assigned_lga if is_lgi else "Katsina Zone",
+        "total": int(totals["total"] or 0), "male": int(totals["male"] or 0),
+        "female": int(totals["female"] or 0),
+        "lgas": [row_dict(r) for r in lga_rows],
+        "batches": [row_dict(r) for r in batch_rows],
+        "updated_at": datetime.now(ZoneInfo("Africa/Lagos")).strftime("%d %b %Y, %I:%M:%S %p")
+    }
+    return app.response_class(json.dumps(payload), mimetype="application/json")
+
+
 @app.route("/files")
 @login_required
 @lgi_report_only
