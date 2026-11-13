@@ -18,8 +18,31 @@ import json
 BASE = os.path.dirname(os.path.abspath(__file__))
 # Render Persistent Disk: set UPLOADS_DIR=/var/data/uploads in the Render environment.
 # Local development continues to use the project's ./uploads directory by default.
-UPLOADS = os.path.abspath(os.environ.get("UPLOADS_DIR") or os.path.join(BASE, "uploads"))
-os.makedirs(UPLOADS, exist_ok=True)
+_requested_uploads_dir = os.environ.get("UPLOADS_DIR") or os.path.join(BASE, "uploads")
+UPLOADS = os.path.abspath(_requested_uploads_dir)
+try:
+    os.makedirs(UPLOADS, exist_ok=True)
+    # Confirm the configured directory is writable before the app starts.
+    _write_test = os.path.join(UPLOADS, ".katzims_write_test")
+    with open(_write_test, "w", encoding="utf-8") as _handle:
+        _handle.write("ok")
+    os.remove(_write_test)
+except OSError as _storage_error:
+    # Do not prevent Gunicorn from starting when a Render Disk is not mounted
+    # or its mount path is misconfigured. Local fallback is temporary/ephemeral.
+    app_logger = None
+    try:
+        import logging
+        app_logger = logging.getLogger(__name__)
+        app_logger.exception(
+            "Configured UPLOADS_DIR %r is not writable: %s. Falling back to local uploads; "
+            "configure a writable Render Persistent Disk before relying on uploads.",
+            UPLOADS, _storage_error
+        )
+    except Exception:
+        pass
+    UPLOADS = os.path.join(BASE, "uploads")
+    os.makedirs(UPLOADS, exist_ok=True)
 
 def stored_upload_path(stored_name):
     """Resolve a stored upload filename safely inside the configured uploads directory."""
